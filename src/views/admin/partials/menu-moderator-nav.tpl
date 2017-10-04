@@ -19,7 +19,7 @@
 	<ul id="main-menu">
 		<li class="dropdown menu-item">
 			<a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">[[admin/menu:section-manage]]</a>
-			<ul>
+			<ul class="dropdown-menu" role="menu">
 				<li><a href="{relative_path}/admin/manage/categories">[[admin/menu:manage/categories]]</a></li>
 				<li><a href="{relative_path}/admin/manage/groups">[[admin/menu:manage/groups]]</a></li>
 			</ul>
