@@ -1,33 +1,53 @@
 'use strict';
 
-(function (module) {
-	var fork = require('child_process').fork;
+var path = require('path');
 
-	module.hash = function (rounds, password, callback) {
-		forkChild({ type: 'hash', rounds: rounds, password: password }, callback);
-	};
+var fork = require('./meta/debugFork');
 
-	module.compare = function (password, hash, callback) {
-		forkChild({ type: 'compare', password: password, hash: hash }, callback);
-	};
+function hash(rounds, password, callback) {
+	forkChild({ type: 'hash', rounds: rounds, password: password }, callback);
+}
 
-	function forkChild(message, callback) {
-		var forkProcessParams = {};
-		if (global.v8debug || parseInt(process.execArgv.indexOf('--debug'), 10) !== -1) {
-			forkProcessParams = { execArgv: ['--debug=' + (5859), '--nolazy'] };
-		}
-		var child = fork('./bcrypt', [], forkProcessParams);
+exports.hash = hash;
 
-		child.on('message', function (msg) {
-			if (msg.err) {
-				return callback(new Error(msg.err));
-			}
-
-			callback(null, msg.result);
-		});
-
-		child.send(message);
+var fakeHashCache;
+function getFakeHash(callback) {
+	if (fakeHashCache) {
+		return callback(null, fakeHashCache);
 	}
 
-	return module;
-}(exports));
+	hash(12, Math.random().toString(), function (err, hash) {
+		if (err) {
+			return callback(err);
+		}
+
+		fakeHashCache = hash;
+		callback(null, fakeHashCache);
+	});
+}
+
+function compare(password, hash, callback) {
+	getFakeHash(function (err, fakeHash) {
+		if (err) {
+			return callback(err);
+		}
+
+		forkChild({ type: 'compare', password: password, hash: hash || fakeHash }, callback);
+	});
+}
+
+exports.compare = compare;
+
+function forkChild(message, callback) {
+	var child = fork(path.join(__dirname, 'bcrypt'));
+
+	child.on('message', function (msg) {
+		if (msg.err) {
+			return callback(new Error(msg.err));
+		}
+
+		callback(null, msg.result);
+	});
+
+	child.send(message);
+}

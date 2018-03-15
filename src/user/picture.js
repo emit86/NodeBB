@@ -1,10 +1,7 @@
 'use strict';
 
 var async = require('async');
-var fs = require('fs');
 var winston = require('winston');
-var request = require('request');
-var mime = require('mime');
 
 var plugins = require('../plugins');
 var file = require('../file');
@@ -13,48 +10,13 @@ var meta = require('../meta');
 var db = require('../database');
 
 module.exports = function (User) {
-	User.uploadPicture = function (uid, picture, callback) {
-		User.uploadCroppedPicture({ uid: uid, file: picture }, callback);
-	};
-
-	User.uploadFromUrl = function (uid, url, callback) {
-		if (!plugins.hasListeners('filter:uploadImage')) {
-			return callback(new Error('[[error:no-plugin]]'));
+	User.updateCoverPosition = function (uid, position, callback) {
+		// Reject anything that isn't two percentages
+		if (!/^[\d.]+%\s[\d.]+%$/.test(position)) {
+			winston.warn('[user/updateCoverPosition] Invalid position received: ' + position);
+			return callback(new Error('[[error:invalid-data]]'));
 		}
 
-		async.waterfall([
-			function (next) {
-				request.head(url, next);
-			},
-			function (res, body, next) {
-				var uploadSize = parseInt(meta.config.maximumProfileImageSize, 10) || 256;
-				var size = res.headers['content-length'];
-				var type = res.headers['content-type'];
-				var extension = mime.extension(type);
-
-				if (['png', 'jpeg', 'jpg', 'gif'].indexOf(extension) === -1) {
-					return callback(new Error('[[error:invalid-image-extension]]'));
-				}
-
-				if (size > uploadSize * 1024) {
-					return callback(new Error('[[error:file-too-big, ' + uploadSize + ']]'));
-				}
-
-				plugins.fireHook('filter:uploadImage', {
-					uid: uid,
-					image: {
-						url: url,
-						name: '',
-					},
-				}, next);
-			},
-			function (image, next) {
-				next(null, image);
-			},
-		], callback);
-	};
-
-	User.updateCoverPosition = function (uid, position, callback) {
 		User.setUserField(uid, 'cover:position', position, callback);
 	};
 
@@ -90,7 +52,12 @@ module.exports = function (User) {
 			function (path, next) {
 				picture.path = path;
 
-				var extension = data.file ? file.typeToExtension(data.file.type) : image.extensionFromBase64(data.imageData);
+				var type = data.file ? data.file.type : image.mimeFromBase64(data.imageData);
+				if (!type || !type.match(/^image./)) {
+					return next(new Error('[[error:invalid-image]]'));
+				}
+
+				var extension = file.typeToExtension(type);
 				var filename = generateProfileImageFilename(data.uid, 'profilecover', extension);
 				uploadProfileOrCover(filename, picture, next);
 			},
@@ -106,7 +73,7 @@ module.exports = function (User) {
 				}
 			},
 		], function (err) {
-			deleteFile(picture.path);
+			file.delete(picture.path);
 			callback(err, {
 				url: url,
 			});
@@ -129,6 +96,9 @@ module.exports = function (User) {
 		}
 
 		var type = data.file ? data.file.type : image.mimeFromBase64(data.imageData);
+		if (!type || !type.match(/^image./)) {
+			return callback(new Error('[[error:invalid-image]]'));
+		}
 		var extension = file.typeToExtension(type);
 		if (!extension) {
 			return callback(new Error('[[error:invalid-image-extension]]'));
@@ -154,7 +124,7 @@ module.exports = function (User) {
 			function (path, next) {
 				picture.path = path;
 
-				var imageDimension = parseInt(meta.config.profileImageDimension, 10) || 128;
+				var imageDimension = parseInt(meta.config.profileImageDimension, 10) || 200;
 				image.resizeImage({
 					path: picture.path,
 					extension: extension,
@@ -175,7 +145,7 @@ module.exports = function (User) {
 				}, next);
 			},
 		], function (err) {
-			deleteFile(picture.path);
+			file.delete(picture.path);
 			callback(err, uploadedImage);
 		});
 	};
@@ -185,14 +155,15 @@ module.exports = function (User) {
 		if (!convertToPNG) {
 			return setImmediate(callback, null, path);
 		}
-
-		image.normalise(path, extension, function (err, newPath) {
-			if (err) {
-				return callback(err);
-			}
-			deleteFile(path);
-			callback(null, newPath);
-		});
+		async.waterfall([
+			function (next) {
+				image.normalise(path, extension, next);
+			},
+			function (newPath, next) {
+				file.delete(path);
+				next(null, newPath);
+			},
+		], callback);
 	}
 
 	function uploadProfileOrCover(filename, image, callback) {
@@ -228,16 +199,6 @@ module.exports = function (User) {
 				});
 			},
 		], callback);
-	}
-
-	function deleteFile(path) {
-		if (path) {
-			fs.unlink(path, function (err) {
-				if (err) {
-					winston.error(err);
-				}
-			});
-		}
 	}
 
 	User.removeCoverPicture = function (data, callback) {

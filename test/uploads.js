@@ -4,6 +4,7 @@ var async = require('async');
 var	assert = require('assert');
 var nconf = require('nconf');
 var path = require('path');
+var request = require('request');
 
 var db = require('./mocks/databasemock');
 var categories = require('../src/categories');
@@ -12,8 +13,8 @@ var user = require('../src/user');
 var groups = require('../src/groups');
 var privileges = require('../src/privileges');
 var meta = require('../src/meta');
+var socketUser = require('../src/socket.io/user');
 var helpers = require('./helpers');
-
 
 describe('Upload Controllers', function () {
 	var tid;
@@ -57,11 +58,11 @@ describe('Upload Controllers', function () {
 		var csrf_token;
 
 		before(function (done) {
-			helpers.loginUser('regular', 'zugzug', function (err, _jar, io, _csrf_token) {
+			helpers.loginUser('regular', 'zugzug', function (err, _jar, _csrf_token) {
 				assert.ifError(err);
 				jar = _jar;
 				csrf_token = _csrf_token;
-				privileges.categories.give(['upload:post:file'], cid, 'registered-users', done);
+				privileges.global.give(['upload:post:file'], 'registered-users', done);
 			});
 		});
 
@@ -77,11 +78,10 @@ describe('Upload Controllers', function () {
 		});
 
 		it('should upload an image to a post', function (done) {
-			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/test.png'), { cid: cid }, jar, csrf_token, function (err, res, body) {
+			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/test.png'), {}, jar, csrf_token, function (err, res, body) {
 				assert.ifError(err);
 				assert.equal(res.statusCode, 200);
 				assert(Array.isArray(body));
-				assert(body[0].path);
 				assert(body[0].url);
 				done();
 			});
@@ -90,11 +90,10 @@ describe('Upload Controllers', function () {
 		it('should resize and upload an image to a post', function (done) {
 			var oldValue = meta.config.maximumImageWidth;
 			meta.config.maximumImageWidth = 10;
-			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/test.png'), { cid: cid }, jar, csrf_token, function (err, res, body) {
+			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/test.png'), {}, jar, csrf_token, function (err, res, body) {
 				assert.ifError(err);
 				assert.equal(res.statusCode, 200);
 				assert(Array.isArray(body));
-				assert(body[0].path);
 				assert(body[0].url);
 				meta.config.maximumImageWidth = oldValue;
 				done();
@@ -104,11 +103,13 @@ describe('Upload Controllers', function () {
 
 		it('should upload a file to a post', function (done) {
 			meta.config.allowFileUploads = 1;
-			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/503.html'), { cid: cid }, jar, csrf_token, function (err, res, body) {
+			var oldValue = meta.config.allowedFileExtensions;
+			meta.config.allowedFileExtensions = 'png,jpg,bmp,html';
+			helpers.uploadFile(nconf.get('url') + '/api/post/upload', path.join(__dirname, '../test/files/503.html'), {}, jar, csrf_token, function (err, res, body) {
+				meta.config.allowedFileExtensions = oldValue;
 				assert.ifError(err);
 				assert.equal(res.statusCode, 200);
 				assert(Array.isArray(body));
-				assert(body[0].path);
 				assert(body[0].url);
 				done();
 			});
@@ -144,15 +145,28 @@ describe('Upload Controllers', function () {
 				done();
 			});
 		});
-	});
 
+		it('should not allow non image uploads', function (done) {
+			socketUser.updateCover({ uid: 1 }, { uid: 1, imageData: 'data:text/html;base64,PHN2Zy9vbmxvYWQ9YWxlcnQoMik+' }, function (err) {
+				assert.equal(err.message, '[[error:invalid-image]]');
+				done();
+			});
+		});
+
+		it('should not allow non image uploads', function (done) {
+			socketUser.uploadCroppedPicture({ uid: 1 }, { uid: 1, imageData: 'data:text/html;base64,PHN2Zy9vbmxvYWQ9YWxlcnQoMik+' }, function (err) {
+				assert.equal(err.message, '[[error:invalid-image]]');
+				done();
+			});
+		});
+	});
 
 	describe('admin uploads', function () {
 		var jar;
 		var csrf_token;
 
 		before(function (done) {
-			helpers.loginUser('admin', 'barbar', function (err, _jar, io, _csrf_token) {
+			helpers.loginUser('admin', 'barbar', function (err, _jar, _csrf_token) {
 				assert.ifError(err);
 				jar = _jar;
 				csrf_token = _csrf_token;
@@ -170,12 +184,65 @@ describe('Upload Controllers', function () {
 			});
 		});
 
+		it('should fail to upload invalid file type', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/category/uploadpicture', path.join(__dirname, '../test/files/503.html'), { params: JSON.stringify({ cid: cid }) }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(body.error, '[[error:invalid-image-type, image/png&#44; image/jpeg&#44; image/pjpeg&#44; image/jpg&#44; image/gif&#44; image/svg+xml]]');
+				done();
+			});
+		});
+
+		it('should fail to upload category image with invalid json params', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/category/uploadpicture', path.join(__dirname, '../test/files/test.png'), { params: 'invalid json' }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(body.error, '[[error:invalid-json]]');
+				done();
+			});
+		});
+
 		it('should upload category image', function (done) {
 			helpers.uploadFile(nconf.get('url') + '/api/admin/category/uploadpicture', path.join(__dirname, '../test/files/test.png'), { params: JSON.stringify({ cid: cid }) }, jar, csrf_token, function (err, res, body) {
 				assert.ifError(err);
 				assert.equal(res.statusCode, 200);
 				assert(Array.isArray(body));
 				assert.equal(body[0].url, nconf.get('relative_path') + '/assets/uploads/category/category-1.png');
+				done();
+			});
+		});
+
+
+		it('should fail to upload invalid sound file', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/upload/sound', path.join(__dirname, '../test/files/test.png'), { }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(res.statusCode, 500);
+				assert.equal(body.error, '[[error:invalid-data]]');
+				done();
+			});
+		});
+
+		it('should upload sound file', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/upload/sound', path.join(__dirname, '../test/files/test.wav'), { }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(res.statusCode, 200);
+				assert(body);
+				done();
+			});
+		});
+
+		it('should upload default avatar', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/uploadDefaultAvatar', path.join(__dirname, '../test/files/test.png'), { }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(res.statusCode, 200);
+				assert.equal(body[0].url, nconf.get('relative_path') + '/assets/uploads/system/avatar-default.png');
+				done();
+			});
+		});
+
+		it('should upload og image', function (done) {
+			helpers.uploadFile(nconf.get('url') + '/api/admin/uploadOgImage', path.join(__dirname, '../test/files/test.png'), { }, jar, csrf_token, function (err, res, body) {
+				assert.ifError(err);
+				assert.equal(res.statusCode, 200);
+				assert.equal(body[0].url, nconf.get('relative_path') + '/assets/uploads/system/og-image.png');
 				done();
 			});
 		});
@@ -191,18 +258,20 @@ describe('Upload Controllers', function () {
 		});
 
 		it('should upload touch icon', function (done) {
+			var touchiconAssetPath = '/assets/uploads/system/touchicon-orig.png';
 			helpers.uploadFile(nconf.get('url') + '/api/admin/uploadTouchIcon', path.join(__dirname, '../test/files/test.png'), {}, jar, csrf_token, function (err, res, body) {
 				assert.ifError(err);
 				assert.equal(res.statusCode, 200);
 				assert(Array.isArray(body));
-				assert.equal(body[0].url, '/assets/uploads/system/touchicon-orig.png');
-				done();
+				assert.equal(body[0].url, touchiconAssetPath);
+				meta.config['brand:touchIcon'] = touchiconAssetPath;
+				request(nconf.get('url') + '/apple-touch-icon', function (err, res, body) {
+					assert.ifError(err);
+					assert.equal(res.statusCode, 200);
+					assert(body);
+					done();
+				});
 			});
 		});
-	});
-
-
-	after(function (done) {
-		db.emptydb(done);
 	});
 });

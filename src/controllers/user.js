@@ -9,7 +9,7 @@ var accountHelpers = require('./accounts/helpers');
 var userController = module.exports;
 
 userController.getCurrentUser = function (req, res, next) {
-	if (!req.uid) {
+	if (!req.loggedIn) {
 		return res.status(401).json('not-authorized');
 	}
 	async.waterfall([
@@ -91,8 +91,8 @@ userController.getUserDataByUID = function (callerUid, uid, callback) {
 			return callback(err || new Error('[[error:no-user]]'));
 		}
 
-		results.userData.email = results.settings.showemail ? results.userData.email : undefined;
-		results.userData.fullname = results.settings.showfullname ? results.userData.fullname : undefined;
+		results.userData.email = results.settings.showemail && parseInt(meta.config.hideEmail, 10) !== 1 ? results.userData.email : undefined;
+		results.userData.fullname = results.settings.showfullname && parseInt(meta.config.hideFullname, 10) !== 1 ? results.userData.fullname : undefined;
 
 		callback(null, results.userData);
 	});

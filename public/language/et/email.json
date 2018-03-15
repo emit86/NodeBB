@@ -30,7 +30,12 @@
     "notif.chat.unsub.info": "See chat teavitus on saadetud teile tellimuse seadistuse tõttu.",
     "notif.post.cta": "Vajuta siia, et lugeda teemat täies mahus",
     "notif.post.unsub.info": "See postituse teavitus on saadetud teile tellimuse seadistuse tõttu.",
+    "notif.cta": "Click here to go to forum",
     "test.text1": "See on test e-mail kinnitamaks, et emailer on korrektselt seadistatud sinu NodeBB jaoks.",
     "unsub.cta": "Vajuta siia, et muuta neid seadeid",
+    "banned.subject": "You have been banned from %1",
+    "banned.text1": "The user %1 has been banned from %2.",
+    "banned.text2": "This ban will last until %1.",
+    "banned.text3": "This is the reason why you have been banned:",
     "closing": "Aitäh!"
 }

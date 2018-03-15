@@ -5,7 +5,7 @@
 
 <table component="groups/members" class="table table-striped table-hover" data-nextstart="{group.membersNextStart}">
 	<tbody>
-	<!-- BEGIN members -->
+	<!-- BEGIN group.members -->
 	<tr data-uid="{group.members.uid}">
 		<td>
 			<a href="{config.relative_path}/user/{group.members.userslug}">
@@ -17,7 +17,7 @@
 			</a>
 		</td>
 		<td class="member-name">
-			<a href="{config.relative_path}/user/{group.members.userslug}">{group.members.username}</a> <i title="[[groups:owner]]" class="fa fa-star text-warning <!-- IF !group.members.isOwner -->invisible<!-- ENDIF !group.members.isOwner -->"></i>
+			<a href="{config.relative_path}/user/{group.members.userslug}">{group.members.username}</a> <i title="[[groups:owner]]" class="user-owner-icon fa fa-star text-warning <!-- IF !group.members.isOwner -->invisible<!-- ENDIF !group.members.isOwner -->"></i>
 
 			<!-- IF group.isOwner -->
 			<div class="owner-controls btn-group pull-right">
@@ -32,6 +32,6 @@
 			<!-- ENDIF group.isOwner -->
 		</td>
 	</tr>
-	<!-- END members -->
+	<!-- END group.members -->
 	</tbody>
 </table>

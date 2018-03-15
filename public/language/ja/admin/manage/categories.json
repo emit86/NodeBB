@@ -10,6 +10,7 @@
 	"custom-class": "カスタムClass",
 	"num-recent-replies": "# 最近の返信数",
 	"ext-link": "外部リンク",
+	"is-section": "このカテゴリをセクションとして扱う",
 	"upload-image": "画像をアップロード",
 	"delete-image": "削除",
 	"category-image": "カテゴリ画像",
@@ -64,5 +65,7 @@
 	"alert.find-user": "ユーザーの検索",
 	"alert.user-search": "ここでユーザーを検索...",
 	"alert.find-group": "グループを探す",
-	"alert.group-search": "ここでグループを検索する..."
+	"alert.group-search": "ここでグループを検索する...",
+	"collapse-all": "Collapse All",
+	"expand-all": "Expand All"
 }

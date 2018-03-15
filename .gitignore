@@ -1,3 +1,4 @@
+yarn.lock
 npm-debug.log
 node_modules/
 sftp-config.json
@@ -17,6 +18,7 @@ provision.sh
 .DS_Store
 feeds/recent.rss
 .eslintcache
+.svn
 
 logs/
 
@@ -26,6 +28,8 @@ pidfile
 /public/templates
 
 /public/sounds
+/public/uploads
+/test/uploads
 
 # compiled files
 /public/stylesheet.css
@@ -55,6 +59,11 @@ tx.exe
 
 ##Coverage output
 coverage
+.nyc_output
 
 build
 *.log
+test/files/normalise.jpg.png
+test/files/normalise-resized.jpg
+package-lock.json
+/package.json

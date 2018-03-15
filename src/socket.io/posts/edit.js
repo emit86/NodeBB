@@ -2,25 +2,25 @@
 
 var async = require('async');
 var validator = require('validator');
-var _ = require('underscore');
-var S = require('string');
+var _ = require('lodash');
 
 var posts = require('../../posts');
 var groups = require('../../groups');
 var events = require('../../events');
 var meta = require('../../meta');
+var utils = require('../../utils');
 var websockets = require('../index');
 
 module.exports = function (SocketPosts) {
 	SocketPosts.edit = function (socket, data, callback) {
 		if (!socket.uid) {
 			return callback(new Error('[[error:not-logged-in]]'));
-		} else if (!data || !data.pid || !data.content) {
+		} else if (!data || !data.pid || (parseInt(meta.config.minimumPostLength, 10) !== 0 && !data.content)) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
 
 		// Trim and remove HTML (latter for composers that send in HTML, like redactor)
-		var contentLen = S(data.content).stripTags().s.trim().length;
+		var contentLen = utils.stripHTMLTags(data.content).trim().length;
 
 		if (data.title && data.title.length < parseInt(meta.config.minimumTitleLength, 10)) {
 			return callback(new Error('[[error:title-too-short, ' + meta.config.minimumTitleLength + ']]'));
@@ -30,7 +30,7 @@ module.exports = function (SocketPosts) {
 			return callback(new Error('[[error:not-enough-tags, ' + meta.config.minimumTagsPerTopic + ']]'));
 		} else if (data.tags && data.tags.length > parseInt(meta.config.maximumTagsPerTopic, 10)) {
 			return callback(new Error('[[error:too-many-tags, ' + meta.config.maximumTagsPerTopic + ']]'));
-		} else if (contentLen < parseInt(meta.config.minimumPostLength, 10)) {
+		} else if (parseInt(meta.config.minimumPostLength, 10) !== 0 && contentLen < parseInt(meta.config.minimumPostLength, 10)) {
 			return callback(new Error('[[error:content-too-short, ' + meta.config.minimumPostLength + ']]'));
 		} else if (contentLen > parseInt(meta.config.maximumPostLength, 10)) {
 			return callback(new Error('[[error:content-too-long, ' + meta.config.maximumPostLength + ']]'));
@@ -64,12 +64,12 @@ module.exports = function (SocketPosts) {
 				groups.getMembersOfGroups([
 					'administrators',
 					'Global Moderators',
-					'cid:' + result.topic.cid + ':privileges:mods',
+					'cid:' + result.topic.cid + ':privileges:moderate',
 					'cid:' + result.topic.cid + ':privileges:groups:moderate',
 				], next);
 			},
 			function (results, next) {
-				var uids = _.unique(_.flatten(results).concat(socket.uid.toString()));
+				var uids = _.uniq(_.flatten(results).concat(socket.uid.toString()));
 				uids.forEach(function (uid) {
 					websockets.in('uid_' + uid).emit('event:post_edited', editResult);
 				});

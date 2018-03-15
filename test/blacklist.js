@@ -1,6 +1,6 @@
 'use strict';
 
-/* global require, after, before*/
+/* global require, after, before */
 
 
 var async = require('async');
@@ -49,31 +49,24 @@ describe('blacklist', function () {
 		});
 	});
 
-	it('should pass ip test against blacklist async', function (done) {
+	it('should pass ip test against blacklist', function (done) {
 		blacklist.test('3.3.3.3', function (err) {
 			assert.ifError(err);
 			done();
 		});
 	});
 
-	it('should pass ip test against blacklist sync', function (done) {
-		assert(!blacklist.test('3.3.3.3'));
-		done();
-	});
-
-	it('should fail ip test against blacklist async', function (done) {
+	it('should fail ip test against blacklist', function (done) {
 		blacklist.test('1.1.1.1', function (err) {
 			assert.equal(err.message, '[[error:blacklisted-ip]]');
 			done();
 		});
 	});
 
-	it('should fail ip test against blacklist sync', function (done) {
-		assert(blacklist.test('1.1.1.1'));
-		done();
-	});
-
-	after(function (done) {
-		db.emptydb(done);
+	it('should pass ip test and not crash with ipv6 address', function (done) {
+		blacklist.test('2001:db8:85a3:0:0:8a2e:370:7334', function (err) {
+			assert.ifError(err);
+			done();
+		});
 	});
 });

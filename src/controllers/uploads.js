@@ -1,11 +1,9 @@
 'use strict';
 
-var fs = require('fs');
 var path = require('path');
 var async = require('async');
 var nconf = require('nconf');
 var validator = require('validator');
-var winston = require('winston');
 
 var meta = require('../meta');
 var file = require('../file');
@@ -33,7 +31,7 @@ uploadsController.upload = function (req, res, filesIterator) {
 			return res.status(500).json({ path: req.path, error: err.message });
 		}
 
-		res.status(200).send(images);
+		res.status(200).json(images);
 	});
 };
 
@@ -51,7 +49,7 @@ uploadsController.uploadPost = function (req, res, next) {
 function uploadAsImage(req, uploadedFile, callback) {
 	async.waterfall([
 		function (next) {
-			privileges.categories.can('upload:post:image', req.body.cid, req.uid, next);
+			privileges.global.can('upload:post:image', req.uid, next);
 		},
 		function (canUpload, next) {
 			if (!canUpload) {
@@ -75,13 +73,16 @@ function uploadAsImage(req, uploadedFile, callback) {
 
 			resizeImage(fileObj, next);
 		},
+		function (fileObj, next) {
+			next(null, { url: fileObj.url });
+		},
 	], callback);
 }
 
 function uploadAsFile(req, uploadedFile, callback) {
 	async.waterfall([
 		function (next) {
-			privileges.categories.can('upload:post:file', req.body.cid, req.uid, next);
+			privileges.global.can('upload:post:file', req.uid, next);
 		},
 		function (canUpload, next) {
 			if (!canUpload) {
@@ -91,6 +92,9 @@ function uploadAsFile(req, uploadedFile, callback) {
 				return next(new Error('[[error:uploads-are-disabled]]'));
 			}
 			uploadsController.uploadFile(req.uid, uploadedFile, next);
+		},
+		function (fileObj, next) {
+			next(null, { url: fileObj.url });
 		},
 	], callback);
 }
@@ -208,48 +212,45 @@ uploadsController.uploadFile = function (uid, uploadedFile, callback) {
 		return callback(new Error('[[error:file-too-big, ' + meta.config.maximumFileSize + ']]'));
 	}
 
-	if (meta.config.hasOwnProperty('allowedFileExtensions')) {
-		var allowed = file.allowedExtensions();
-		var extension = file.typeToExtension(uploadedFile.type);
-		if (!extension || (allowed.length > 0 && allowed.indexOf(extension) === -1)) {
-			return callback(new Error('[[error:invalid-file-type, ' + allowed.join('&#44; ') + ']]'));
-		}
+	var allowed = file.allowedExtensions();
+
+	var extension = path.extname(uploadedFile.name).toLowerCase();
+	if (allowed.length > 0 && (!extension || extension === '.' || allowed.indexOf(extension) === -1)) {
+		return callback(new Error('[[error:invalid-file-type, ' + allowed.join('&#44; ') + ']]'));
 	}
 
 	saveFileToLocal(uploadedFile, callback);
 };
 
 function saveFileToLocal(uploadedFile, callback) {
-	var extension = file.typeToExtension(uploadedFile.type);
-	if (!extension) {
-		return callback(new Error('[[error:invalid-extension]]'));
-	}
 	var filename = uploadedFile.name || 'upload';
+	var extension = path.extname(filename) || '';
 
-	filename = Date.now() + '-' + validator.escape(filename.replace(path.extname(uploadedFile.name) || '', '')).substr(0, 255) + extension;
+	filename = Date.now() + '-' + validator.escape(filename.substr(0, filename.length - extension.length)).substr(0, 255) + extension;
 
 	async.waterfall([
 		function (next) {
 			file.saveFileToLocal(filename, 'files', uploadedFile.path, next);
 		},
 		function (upload, next) {
-			next(null, {
+			var storedFile = {
 				url: nconf.get('relative_path') + upload.url,
 				path: upload.path,
 				name: uploadedFile.name,
-			});
+			};
+
+			plugins.fireHook('filter:uploadStored', { uploadedFile: uploadedFile, storedFile: storedFile }, next);
+		},
+		function (data, next) {
+			next(null, data.storedFile);
 		},
 	], callback);
 }
 
 function deleteTempFiles(files) {
-	async.each(files, function (file, next) {
-		fs.unlink(file.path, function (err) {
-			if (err) {
-				winston.error(err);
-			}
-			next();
-		});
+	async.each(files, function (fileObj, next) {
+		file.delete(fileObj.path);
+		next();
 	});
 }
 

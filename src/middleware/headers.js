@@ -1,5 +1,7 @@
 'use strict';
 
+var os = require('os');
+
 var meta = require('../meta');
 
 module.exports = function (middleware) {
@@ -15,22 +17,14 @@ module.exports = function (middleware) {
 			headers['Access-Control-Allow-Origin'] = encodeURI(meta.config['access-control-allow-origin']);
 		}
 
+		if (process.env.NODE_ENV === 'development') {
+			headers['X-Upstream-Hostname'] = os.hostname();
+		}
+
 		for (var key in headers) {
 			if (headers.hasOwnProperty(key) && headers[key]) {
 				res.setHeader(key, headers[key]);
 			}
-		}
-
-		next();
-	};
-
-	middleware.addExpiresHeaders = function (req, res, next) {
-		if (req.app.enabled('cache')) {
-			res.setHeader('Cache-Control', 'public, max-age=5184000');
-			res.setHeader('Expires', new Date(Date.now() + 5184000000).toUTCString());
-		} else {
-			res.setHeader('Cache-Control', 'public, max-age=0');
-			res.setHeader('Expires', new Date().toUTCString());
 		}
 
 		next();

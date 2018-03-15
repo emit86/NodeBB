@@ -8,7 +8,8 @@ define('forum/topic/postTools', [
 	'translator',
 	'forum/topic/votes',
 	'forum/topic/move-post',
-], function (share, navigator, components, translator, votes, movePost) {
+	'forum/topic/diffs',
+], function (share, navigator, components, translator, votes, movePost, diffs) {
 	var PostTools = {};
 
 	var staleReplyAnyway = false;
@@ -44,11 +45,12 @@ define('forum/topic/postTools', [
 				}
 				data.posts.display_move_tools = data.posts.display_move_tools && index !== 0;
 
-				templates.parse('partials/topic/post-menu-list', data, function (html) {
-					translator.translate(html, function (html) {
-						dropdownMenu.html(html);
-						$(window).trigger('action:post.tools.load');
+				app.parseAndTranslate('partials/topic/post-menu-list', data, function (html) {
+					dropdownMenu.html(html);
+					require(['clipboard'], function (clipboard) {
+						new clipboard('[data-clipboard-text]');
 					});
+					$(window).trigger('action:post.tools.load');
 				});
 			});
 		});
@@ -85,7 +87,8 @@ define('forum/topic/postTools', [
 			onReplyClicked($(this), tid);
 		});
 
-		$('.topic').on('click', '[component="topic/reply"]', function () {
+		$('.topic').on('click', '[component="topic/reply"]', function (e) {
+			e.preventDefault();
 			onReplyClicked($(this), tid);
 		});
 
@@ -116,10 +119,11 @@ define('forum/topic/postTools', [
 
 		postContainer.on('click', '[component="post/flag"]', function () {
 			var pid = getData($(this), 'data-pid');
-			var username = getData($(this), 'data-username');
-			var userslug = getData($(this), 'data-userslug');
-			require(['forum/topic/flag'], function (flag) {
-				flag.showFlagModal(pid, username, userslug);
+			require(['flags'], function (flags) {
+				flags.showFlagModal({
+					type: 'post',
+					id: pid,
+				});
 			});
 		});
 
@@ -134,6 +138,11 @@ define('forum/topic/postTools', [
 					pid: getData(btn, 'data-pid'),
 				});
 			}
+		});
+
+		postContainer.on('click', '[component="post/view-history"], [component="post/edit-indicator"]', function () {
+			var btn = $(this);
+			diffs.open(getData(btn, 'data-pid'));
 		});
 
 		postContainer.on('click', '[component="post/delete"]', function () {
@@ -189,6 +198,16 @@ define('forum/topic/postTools', [
 			movePost.openMovePostModal($(this));
 		});
 
+		postContainer.on('click', '[component="post/ban-ip"]', function () {
+			var ip = $(this).attr('data-ip');
+			socket.emit('blacklist.addRule', ip, function (err) {
+				if (err) {
+					return app.alertError(err.message);
+				}
+				app.alertSuccess('[[admin/manage/blacklist:ban-ip]]');
+			});
+		});
+
 		postContainer.on('click', '[component="post/chat"]', function () {
 			openChat($(this));
 		});
@@ -198,7 +217,7 @@ define('forum/topic/postTools', [
 		var selectedNode = getSelectedNode();
 
 		showStaleWarning(function () {
-			var username = getUserName(button);
+			var username = getUserSlug(button);
 			if (getData(button, 'data-uid') === '0' || !getData(button, 'data-userslug')) {
 				username = '';
 			}
@@ -230,7 +249,7 @@ define('forum/topic/postTools', [
 		var selectedNode = getSelectedNode();
 
 		showStaleWarning(function () {
-			var username = getUserName(button);
+			var username = getUserSlug(button);
 			var toPid = getData(button, 'data-pid');
 
 			function quote(text) {
@@ -283,7 +302,7 @@ define('forum/topic/postTools', [
 			selectedText = range.toString();
 			var postEl = $(content).parents('[component="post"]');
 			selectedPid = postEl.attr('data-pid');
-			username = getUserName($(content));
+			username = getUserSlug($(content));
 			range.detach();
 		}
 		return { text: selectedText, pid: selectedPid, username: username };
@@ -294,7 +313,7 @@ define('forum/topic/postTools', [
 
 		socket.emit(method, {
 			pid: pid,
-			room_id: app.currentRoom,
+			room_id: 'topic_' + ajaxify.data.tid,
 		}, function (err) {
 			if (err) {
 				app.alertError(err.message);
@@ -308,22 +327,22 @@ define('forum/topic/postTools', [
 		return button.parents('[data-pid]').attr(data);
 	}
 
-	function getUserName(button) {
-		var username = '';
+	function getUserSlug(button) {
+		var slug = '';
 		var post = button.parents('[data-pid]');
 
 		if (button.attr('component') === 'topic/reply') {
-			return username;
+			return slug;
 		}
 
 		if (post.length) {
-			username = post.attr('data-username').replace(/\s/g, '-');
+			slug = post.attr('data-userslug');
 		}
 		if (post.length && post.attr('data-uid') !== '0') {
-			username = '@' + username;
+			slug = '@' + slug;
 		}
 
-		return username;
+		return slug;
 	}
 
 	function togglePostDelete(button, tid) {
@@ -366,7 +385,8 @@ define('forum/topic/postTools', [
 	}
 
 	function showStaleWarning(callback) {
-		if (staleReplyAnyway || ajaxify.data.lastposttime >= (Date.now() - (1000 * 60 * 60 * 24 * ajaxify.data.topicStaleDays))) {
+		var staleThreshold = Math.min(Date.now() - (1000 * 60 * 60 * 24 * ajaxify.data.topicStaleDays), 8640000000000000);
+		if (staleReplyAnyway || ajaxify.data.lastposttime >= staleThreshold) {
 			return callback();
 		}
 

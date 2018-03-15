@@ -1,7 +1,7 @@
 'use strict';
 
 
-define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (semver, Chart, translator) {
+define('admin/general/dashboard', ['semver', 'Chart', 'translator', 'benchpress'], function (semver, Chart, translator, Benchpress) {
 	var	Admin = {};
 	var	intervals = {
 		rooms: false,
@@ -99,25 +99,25 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 		graphData.rooms = data;
 
 		var html = '<div class="text-center pull-left">' +
-						'<div>' + data.onlineRegisteredCount + '</div>' +
-						'<div>[[admin/general/dashboard:active-users.users]]</div>' +
+						'<span class="formatted-number">' + data.onlineRegisteredCount + '</span>' +
+						'<div class="stat">[[admin/general/dashboard:active-users.users]]</div>' +
 					'</div>' +
 					'<div class="text-center pull-left">' +
-						'<div>' + data.onlineGuestCount + '</div>' +
-						'<div>[[admin/general/dashboard:active-users.guests]]</div>' +
+						'<span class="formatted-number">' + data.onlineGuestCount + '</span>' +
+						'<div class="stat">[[admin/general/dashboard:active-users.guests]]</div>' +
 					'</div>' +
 					'<div class="text-center pull-left">' +
-						'<div>' + (data.onlineRegisteredCount + data.onlineGuestCount) + '</div>' +
-						'<div>[[admin/general/dashboard:active-users.total]]</div>' +
+						'<span class="formatted-number">' + (data.onlineRegisteredCount + data.onlineGuestCount) + '</span>' +
+						'<div class="stat">[[admin/general/dashboard:active-users.total]]</div>' +
 					'</div>' +
 					'<div class="text-center pull-left">' +
-						'<div>' + data.socketCount + '</div>' +
-						'<div>[[admin/general/dashboard:active-users.connections]]</div>' +
+						'<span class="formatted-number">' + data.socketCount + '</span>' +
+						'<div class="stat">[[admin/general/dashboard:active-users.connections]]</div>' +
 					'</div>';
 
 		updateRegisteredGraph(data.onlineRegisteredCount, data.onlineGuestCount);
 		updatePresenceGraph(data.users);
-		updateTopicsGraph(data.topics);
+		updateTopicsGraph(data.topTenTopics);
 
 		$('#active-users').translateHtml(html);
 	};
@@ -208,7 +208,7 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 						backgroundColor: 'rgba(151,187,205,0.2)',
 						borderColor: 'rgba(151,187,205,1)',
 						pointBackgroundColor: 'rgba(151,187,205,1)',
-						pointHoverBackgroundColor: '#fff',
+						pointHoverBackgroundColor: 'rgba(151,187,205,1)',
 						pointBorderColor: '#fff',
 						pointHoverBorderColor: 'rgba(151,187,205,1)',
 						data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -217,6 +217,10 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 			};
 
 			trafficCanvas.width = $(trafficCanvas).parent().width();
+
+			data.datasets[0].yAxisID = 'left-y-axis';
+			data.datasets[1].yAxisID = 'right-y-axis';
+
 			graphs.traffic = new Chart(trafficCtx, {
 				type: 'line',
 				data: data,
@@ -227,10 +231,32 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 					},
 					scales: {
 						yAxes: [{
+							id: 'left-y-axis',
 							ticks: {
 								beginAtZero: true,
 							},
+							type: 'linear',
+							position: 'left',
+							scaleLabel: {
+								display: true,
+								labelString: translations[0],
+							},
+						}, {
+							id: 'right-y-axis',
+							ticks: {
+								beginAtZero: true,
+								suggestedMax: 10,
+							},
+							type: 'linear',
+							position: 'right',
+							scaleLabel: {
+								display: true,
+								labelString: translations[1],
+							},
 						}],
+					},
+					tooltips: {
+						mode: 'x',
 					},
 				},
 			});
@@ -294,17 +320,74 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 			$(window).on('resize', adjustPieCharts);
 			adjustPieCharts();
 
-			$('[data-action="updateGraph"]').on('click', function () {
-				var until;
-				switch ($(this).attr('data-until')) {
-				case 'last-month':
-					var lastMonth = new Date();
-					lastMonth.setDate(lastMonth.getDate() - 30);
-					until = lastMonth.getTime();
+			$('[data-action="updateGraph"]:not([data-units="custom"])').on('click', function () {
+				var until = new Date();
+				var amount = $(this).attr('data-amount');
+				if ($(this).attr('data-units') === 'days') {
+					until.setHours(0, 0, 0, 0);
 				}
-				updateTrafficGraph($(this).attr('data-units'), until);
+				until = until.getTime();
+				updateTrafficGraph($(this).attr('data-units'), until, amount);
+				$('[data-action="updateGraph"]').removeClass('active');
+				$(this).addClass('active');
+
+				require(['translator'], function (translator) {
+					translator.translate('[[admin/general/dashboard:page-views-custom]]', function (translated) {
+						$('[data-action="updateGraph"][data-units="custom"]').text(translated);
+					});
+				});
+			});
+			$('[data-action="updateGraph"][data-units="custom"]').on('click', function () {
+				var targetEl = $(this);
+
+				Benchpress.parse('admin/partials/pageviews-range-select', {}, function (html) {
+					var modal = bootbox.dialog({
+						title: '[[admin/general/dashboard:page-views-custom]]',
+						message: html,
+						buttons: {
+							submit: {
+								label: '[[global:search]]',
+								className: 'btn-primary',
+								callback: submit,
+							},
+						},
+					});
+
+					function submit() {
+						// NEED TO ADD VALIDATION HERE FOR YYYY-MM-DD
+						var formData = modal.find('form').serializeObject();
+						var validRegexp = /\d{4}-\d{2}-\d{2}/;
+
+						// Input validation
+						if (!formData.startRange && !formData.endRange) {
+							// No range? Assume last 30 days
+							updateTrafficGraph('days');
+							$('[data-action="updateGraph"]').removeClass('active');
+							$('[data-action="updateGraph"][data-units="days"]').addClass('active');
+							return;
+						} else if (!validRegexp.test(formData.startRange) || !validRegexp.test(formData.endRange)) {
+							// Invalid Input
+							modal.find('.alert-danger').removeClass('hidden');
+							return false;
+						}
+
+						var until = new Date(formData.endRange);
+						until.setDate(until.getDate() + 1);
+						until = until.getTime();
+						var amount = (until - new Date(formData.startRange).getTime()) / (1000 * 60 * 60 * 24);
+
+						updateTrafficGraph('days', until, amount);
+						$('[data-action="updateGraph"]').removeClass('active');
+						targetEl.addClass('active');
+
+						// Update "custom range" label
+						targetEl.html(formData.startRange + ' &ndash; ' + formData.endRange);
+					}
+				});
 			});
 
+			socket.emit('admin.rooms.getAll', Admin.updateRoomUsage);
+			initiateDashboard();
 			callback();
 		});
 	}
@@ -321,7 +404,9 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 		});
 	}
 
-	function updateTrafficGraph(units, until) {
+	function updateTrafficGraph(units, until, amount) {
+		// until and amount are optional
+
 		if (!app.isFocused) {
 			return;
 		}
@@ -330,6 +415,7 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 			graph: 'traffic',
 			units: units || 'hours',
 			until: until,
+			amount: amount,
 		}, function (err, data) {
 			if (err) {
 				return app.alertError(err.message);
@@ -341,15 +427,15 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 			graphData.traffic = data;
 
 			if (units === 'days') {
-				graphs.traffic.data.xLabels = utils.getDaysArray(until);
+				graphs.traffic.data.xLabels = utils.getDaysArray(until, amount);
 			} else {
 				graphs.traffic.data.xLabels = utils.getHoursArray();
 
-				$('#pageViewsThisMonth').html(data.monthlyPageViews.thisMonth);
-				$('#pageViewsLastMonth').html(data.monthlyPageViews.lastMonth);
+				$('#pageViewsThirty').html(data.summary.thirty);
+				$('#pageViewsSeven').html(data.summary.seven);
 				$('#pageViewsPastDay').html(data.pastDay);
-				utils.addCommasToNumbers($('#pageViewsThisMonth'));
-				utils.addCommasToNumbers($('#pageViewsLastMonth'));
+				utils.addCommasToNumbers($('#pageViewsThirty'));
+				utils.addCommasToNumbers($('#pageViewsSeven'));
 				utils.addCommasToNumbers($('#pageViewsPastDay'));
 			}
 
@@ -360,6 +446,7 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 			graphs.traffic.update();
 			currentGraph.units = units;
 			currentGraph.until = until;
+			currentGraph.amount = amount;
 		});
 	}
 
@@ -380,40 +467,36 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 	}
 
 	function updateTopicsGraph(topics) {
-		if (!Object.keys(topics).length) {
-			topics = { 0: {
+		if (!topics.length) {
+			topics = [{
 				title: 'No users browsing',
-				value: 1,
-			} };
+				count: 1,
+			}];
 		}
-
-		var tids = Object.keys(topics);
 
 		graphs.topics.data.labels = [];
 		graphs.topics.data.datasets[0].data = [];
 		graphs.topics.data.datasets[0].backgroundColor = [];
 		graphs.topics.data.datasets[0].hoverBackgroundColor = [];
 
-		for (var i = 0, ii = tids.length; i < ii; i += 1) {
-			graphs.topics.data.labels.push(topics[tids[i]].title);
-			graphs.topics.data.datasets[0].data.push(topics[tids[i]].value);
+		topics.forEach(function (topic, i) {
+			graphs.topics.data.labels.push(topic.title);
+			graphs.topics.data.datasets[0].data.push(topic.count);
 			graphs.topics.data.datasets[0].backgroundColor.push(topicColors[i]);
 			graphs.topics.data.datasets[0].hoverBackgroundColor.push(lighten(topicColors[i], 10));
-		}
+		});
 
 		function buildTopicsLegend() {
 			var legend = $('#topics-legend').html('');
 
-			for (var i = 0, ii = tids.length; i < ii; i += 1) {
-				var topic = topics[tids[i]];
-				var	label = topic.value === '0' ? topic.title : '<a title="' + topic.title + '"href="' + RELATIVE_PATH + '/topic/' + tids[i] + '" target="_blank"> ' + topic.title + '</a>';
+			topics.forEach(function (topic, i) {
+				var	label = topic.count === '0' ? topic.title : '<a title="' + topic.title + '"href="' + RELATIVE_PATH + '/topic/' + topic.tid + '" target="_blank"> ' + topic.title + '</a>';
 
-				legend.append(
-					'<li>' +
+				legend.append('<li>' +
 					'<div style="background-color: ' + topicColors[i] + ';"></div>' +
 					'<span>' + label + '</span>' +
 					'</li>');
-			}
+			});
 		}
 
 		buildTopicsLegend();
@@ -446,7 +529,7 @@ define('admin/general/dashboard', ['semver', 'Chart', 'translator'], function (s
 		}, realtime ? DEFAULTS.realtimeInterval : DEFAULTS.roomInterval);
 
 		intervals.graphs = setInterval(function () {
-			updateTrafficGraph(currentGraph.units, currentGraph.until);
+			updateTrafficGraph(currentGraph.units, currentGraph.until, currentGraph.amount);
 		}, realtime ? DEFAULTS.realtimeInterval : DEFAULTS.graphInterval);
 	}
 

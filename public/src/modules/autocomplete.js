@@ -10,7 +10,7 @@ define('autocomplete', function () {
 			input.autocomplete({
 				delay: 200,
 				open: function () {
-					$(this).autocomplete('widget').css('z-index', 20000);
+					$(this).autocomplete('widget').css('z-index', 100005);
 				},
 				select: onselect,
 				source: function (request, response) {
@@ -29,6 +29,11 @@ define('autocomplete', function () {
 										uid: user.uid,
 										name: user.username,
 										slug: user.userslug,
+										username: user.username,
+										userslug: user.userslug,
+										picture: user.picture,
+										'icon:text': user['icon:text'],
+										'icon:bgColor': user['icon:bgColor'],
 									},
 								};
 							});

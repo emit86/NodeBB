@@ -3,7 +3,7 @@
 var async = require('async');
 var plugins = require('../plugins');
 var db = require('../database');
-var translator = require('../../public/src/modules/translator');
+var translator = require('../translator');
 var pubsub = require('../pubsub');
 
 var admin = module.exports;
@@ -15,17 +15,13 @@ pubsub.on('admin:navigation:save', function () {
 
 admin.save = function (data, callback) {
 	var order = Object.keys(data);
-	var items = data.map(function (item, idx) {
-		var data = {};
-
+	var items = data.map(function (item) {
 		for (var i in item) {
-			if (item.hasOwnProperty(i)) {
-				item[i] = typeof item[i] === 'string' ? translator.escape(item[i]) : item[i];
+			if (item.hasOwnProperty(i) && typeof item[i] === 'string' && (i === 'title' || i === 'text')) {
+				item[i] = translator.escape(item[i]);
 			}
 		}
-
-		data[idx] = item;
-		return JSON.stringify(data);
+		return JSON.stringify(item);
 	});
 
 	admin.cache = null;
@@ -48,17 +44,18 @@ admin.getAdmin = function (callback) {
 };
 
 admin.get = function (callback) {
-	db.getSortedSetRange('navigation:enabled', 0, -1, function (err, data) {
-		if (err) {
-			return callback(err);
-		}
+	async.waterfall([
+		function (next) {
+			db.getSortedSetRange('navigation:enabled', 0, -1, next);
+		},
+		function (data, next) {
+			data = data.map(function (item) {
+				return JSON.parse(item);
+			});
 
-		data = data.map(function (item, idx) {
-			return JSON.parse(item)[idx];
-		});
-
-		callback(null, data);
-	});
+			next(null, data);
+		},
+	], callback);
 };
 
 function getAvailable(callback) {

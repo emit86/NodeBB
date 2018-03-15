@@ -9,11 +9,15 @@
 
 	"section-manage": "Управление",
 	"manage/categories": "Категории",
+	"manage/privileges": "Привилегии",
 	"manage/tags": "Теги",
 	"manage/users": "Пользователи",
+	"manage/admins-mods": "Admins & Mods",
 	"manage/registration": "Очередь на регистрацию",
+	"manage/post-queue": "Очередь публикации",
 	"manage/groups": "Группы",
 	"manage/ip-blacklist": "Блокировка IP",
+	"manage/uploads": "Загрузки",
 
 	"section-settings": "Настройки",
 	"settings/general": "Главные",
@@ -38,7 +42,7 @@
 	"section-appearance": "Вид",
 	"appearance/themes": "Темы",
 	"appearance/skins": "Скины",
-	"appearance/customise": "Custom HTML & CSS",
+	"appearance/customise": "Custom Content (HTML/JS/CSS)",
 
 	"section-extend": "Расширения",
 	"extend/plugins": "Плагины",
@@ -59,12 +63,12 @@
 	"development/logger": "Logger",
 	"development/info": "Info",
 
-	"reload-forum": "Reload Forum",
-	"restart-forum": "Restart Forum",
+	"reload-forum": "Перезагрузить Форум",
+	"restart-forum": "Перезапустить Форум",
 	"logout": "Выйти",
-	"view-forum": "View Forum",
+	"view-forum": "Просмотреть Форум",
 
-	"search.placeholder": "Поиск...",
+	"search.placeholder": "Поиск настроек",
 	"search.no-results": "Нет результата...",
 	"search.search-forum": "Search the forum for <strong></strong>",
 	"search.keep-typing": "Type more to see results...",

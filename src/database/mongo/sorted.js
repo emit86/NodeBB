@@ -1,7 +1,7 @@
 'use strict';
 
 var async = require('async');
-var utils = require('../../../public/src/utils');
+var utils = require('../../utils');
 
 module.exports = function (db, module) {
 	var helpers = module.helpers.mongo;
@@ -41,6 +41,22 @@ module.exports = function (db, module) {
 			key = { $in: key };
 		}
 
+		if (start < 0 && start > stop) {
+			return callback(null, []);
+		}
+
+		var reverse = false;
+		if (start === 0 && stop < -1) {
+			reverse = true;
+			sort *= -1;
+			start = Math.abs(stop + 1);
+			stop = -1;
+		} else if (start < 0 && stop > start) {
+			var tmp1 = Math.abs(stop + 1);
+			stop = Math.abs(start + 1);
+			start = tmp1;
+		}
+
 		var limit = stop - start + 1;
 		if (limit <= 0) {
 			limit = 0;
@@ -54,7 +70,9 @@ module.exports = function (db, module) {
 				if (err || !data) {
 					return callback(err);
 				}
-
+				if (reverse) {
+					data.reverse();
+				}
 				if (!withScores) {
 					data = data.map(function (item) {
 						return item.value;
@@ -185,25 +203,36 @@ module.exports = function (db, module) {
 	};
 
 	module.sortedSetRank = function (key, value, callback) {
-		getSortedSetRank(module.getSortedSetRange, key, value, callback);
+		getSortedSetRank(false, key, value, callback);
 	};
 
 	module.sortedSetRevRank = function (key, value, callback) {
-		getSortedSetRank(module.getSortedSetRevRange, key, value, callback);
+		getSortedSetRank(true, key, value, callback);
 	};
 
-	function getSortedSetRank(method, key, value, callback) {
+	function getSortedSetRank(reverse, key, value, callback) {
 		if (!key) {
 			return callback();
 		}
 		value = helpers.valueToString(value);
-		method(key, 0, -1, function (err, result) {
-			if (err) {
-				return callback(err);
+		module.sortedSetScore(key, value, function (err, score) {
+			if (err || score === null) {
+				return callback(err, null);
 			}
 
-			var rank = result.indexOf(value);
-			callback(null, rank !== -1 ? rank : null);
+			db.collection('objects').count({
+				$or: [
+					{
+						_key: key,
+						score: reverse ? { $gt: score } : { $lt: score },
+					},
+					{
+						_key: key,
+						score: score,
+						value: reverse ? { $gt: value } : { $lt: value },
+					},
+				],
+			}, function (err, rank) { callback(err, rank); });
 		});
 	}
 
@@ -217,7 +246,7 @@ module.exports = function (db, module) {
 		}
 
 		async.map(data, function (item, next) {
-			getSortedSetRank(module.getSortedSetRange, item.key, item.value, next);
+			getSortedSetRank(false, item.key, item.value, next);
 		}, callback);
 	};
 
@@ -241,7 +270,7 @@ module.exports = function (db, module) {
 
 	module.sortedSetScore = function (key, value, callback) {
 		if (!key) {
-			return callback();
+			return callback(null, null);
 		}
 		value = helpers.valueToString(value);
 		db.collection('objects').findOne({ _key: key, value: value }, { fields: { _id: 0, score: 1 } }, function (err, result) {
@@ -274,7 +303,7 @@ module.exports = function (db, module) {
 
 	module.sortedSetScores = function (key, values, callback) {
 		if (!key) {
-			return callback();
+			return callback(null, null);
 		}
 		values = values.map(helpers.valueToString);
 		db.collection('objects').find({ _key: key, value: { $in: values } }, { _id: 0, value: 1, score: 1 }).toArray(function (err, result) {
@@ -467,38 +496,46 @@ module.exports = function (db, module) {
 		}
 	}
 
-	module.processSortedSet = function (setKey, process, batch, callback) {
+	module.processSortedSet = function (setKey, processFn, options, callback) {
 		var done = false;
 		var ids = [];
 		var cursor = db.collection('objects').find({ _key: setKey })
 			.sort({ score: 1 })
 			.project({ _id: 0, value: 1 })
-			.batchSize(batch);
+			.batchSize(options.batch);
 
 		async.whilst(
 			function () {
 				return !done;
 			},
 			function (next) {
-				cursor.next(function (err, item) {
-					if (err) {
-						return next(err);
-					}
-					if (item === null) {
-						done = true;
-					} else {
-						ids.push(item.value);
-					}
+				async.waterfall([
+					function (next) {
+						cursor.next(next);
+					},
+					function (item, _next) {
+						if (item === null) {
+							done = true;
+						} else {
+							ids.push(item.value);
+						}
 
-					if (ids.length < batch && (!done || ids.length === 0)) {
-						return next(null);
-					}
-
-					process(ids, function (err) {
+						if (ids.length < options.batch && (!done || ids.length === 0)) {
+							return process.nextTick(next, null);
+						}
+						processFn(ids, function (err) {
+							_next(err);
+						});
+					},
+					function (next) {
 						ids = [];
-						return next(err);
-					});
-				});
+						if (options.interval) {
+							setTimeout(next, options.interval);
+						} else {
+							process.nextTick(next);
+						}
+					},
+				], next);
 			},
 			callback
 		);

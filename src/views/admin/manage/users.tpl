@@ -8,9 +8,6 @@
 					<div class="btn-group pull-right">
 						<button class="btn btn-default dropdown-toggle" data-toggle="dropdown" type="button">[[admin/manage/users:edit]] <span class="caret"></span></button>
 						<ul class="dropdown-menu">
-							<li><a href="#" class="admin-user"><i class="fa fa-fw fa-shield"></i> [[admin/manage/users:make-admin]]</a></li>
-							<li><a href="#" class="remove-admin-user"><i class="fa fa-fw fa-ban"></i> [[admin/manage/users:remove-admin]]</a></li>
-							<li class="divider"></li>
 							<li><a href="#" class="validate-email"><i class="fa fa-fw fa-check"></i> [[admin/manage/users:validate-email]]</a></li>
 							<li><a href="#" class="send-validation-email"><i class="fa fa-fw fa-mail-forward"></i> [[admin/manage/users:send-validation-email]]</a></li>
 							<li><a href="#" class="password-reset-email"><i class="fa fa-fw fa-key"></i> [[admin/manage/users:password-reset-email]]</a></li>
@@ -19,7 +16,6 @@
 							<li><a href="#" class="ban-user-temporary"><i class="fa fa-fw fa-clock-o"></i>[[admin/manage/users:temp-ban]]</a></li>
 							<li><a href="#" class="unban-user"><i class="fa fa-fw fa-comment-o"></i> [[admin/manage/users:unban]]</a></li>
 							<li><a href="#" class="reset-lockout"><i class="fa fa-fw fa-unlock"></i> [[admin/manage/users:reset-lockout]]</a></li>
-							<li><a href="#" class="reset-flags"><i class="fa fa-fw fa-flag"></i> [[admin/manage/users:reset-flags]]</a></li>
 							<li class="divider"></li>
 							<li><a href="#" class="delete-user"><i class="fa fa-fw fa-trash-o"></i> [[admin/manage/users:delete]]</a></li>
 							<li><a href="#" class="delete-user-and-content"><i class="fa fa-fw fa-trash-o"></i> [[admin/manage/users:purge]]</a></li>
@@ -29,7 +25,7 @@
 					<a target="_blank" href="{config.relative_path}/api/admin/users/csv" class="btn btn-primary pull-right">[[admin/manage/users:download-csv]]</a>
 
 					<!-- IF inviteOnly -->
-					<button component="user/invite" class="btn btn-success form-control"><i class="fa fa-users"></i> [[admin/manage/users:invite]]</button>
+					<button component="user/invite" class="btn btn-success pull-right"><i class="fa fa-users"></i> [[admin/manage/users:invite]]</button>
 					<!-- ENDIF inviteOnly -->
 
 					<button id="createUser" class="btn btn-primary pull-right">[[admin/manage/users:new]]</button>
@@ -50,6 +46,9 @@
 				<br />
 
 				<div class="search {search_display}">
+					<label>[[admin/manage/users:search.uid]]</label>
+					<input class="form-control" id="search-user-uid" data-search-type="uid" type="number" placeholder="[[admin/manage/users:search.uid-placeholder]]"/><br />
+
 					<label>[[admin/manage/users:search.username]]</label>
 					<input class="form-control" id="search-user-name" data-search-type="username" type="text" placeholder="[[admin/manage/users:search.username-placeholder]]"/><br />
 

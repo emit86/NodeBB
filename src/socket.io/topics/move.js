@@ -28,19 +28,17 @@ module.exports = function (SocketTopics) {
 				function (_topicData, next) {
 					topicData = _topicData;
 					topicData.tid = tid;
-					topics.tools.move(tid, data.cid, socket.uid, next);
+					data.uid = socket.uid;
+					topics.tools.move(tid, data, next);
 				},
-			], function (err) {
-				if (err) {
-					return next(err);
-				}
+				function (next) {
+					socketHelpers.emitToTopicAndCategory('event:topic_moved', topicData);
 
-				socketHelpers.emitToTopicAndCategory('event:topic_moved', topicData);
+					socketHelpers.sendNotificationToTopicOwner(tid, socket.uid, 'move', 'notifications:moved_your_topic');
 
-				socketHelpers.sendNotificationToTopicOwner(tid, socket.uid, 'move', 'notifications:moved_your_topic');
-
-				next();
-			});
+					next();
+				},
+			], next);
 		}, callback);
 	};
 
@@ -62,8 +60,9 @@ module.exports = function (SocketTopics) {
 				categories.getAllTopicIds(data.currentCid, 0, -1, next);
 			},
 			function (tids, next) {
+				data.uid = socket.uid;
 				async.eachLimit(tids, 50, function (tid, next) {
-					topics.tools.move(tid, data.cid, socket.uid, next);
+					topics.tools.move(tid, data, next);
 				}, next);
 			},
 		], callback);

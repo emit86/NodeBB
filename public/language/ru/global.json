@@ -53,6 +53,7 @@
     "topics": "Темы",
     "posts": "Записи",
     "best": "Лучшие",
+    "votes": "Голоса",
     "upvoters": "Кому понравилось",
     "upvoted": "Понравилось",
     "downvoters": "Кому не понравилось",
@@ -103,5 +104,8 @@
     "cookies.message": "Этот сайт использует cookies для более удобного взаимодействия.",
     "cookies.accept": "Понял",
     "cookies.learn_more": "Подробнее",
-    "edited": "Отредактированный"
+    "edited": "Отредактированный",
+    "disabled": "Отключено",
+    "select": "Выбрать",
+    "user-search-prompt": "Type something here to find users..."
 }

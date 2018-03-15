@@ -1,5 +1,6 @@
 'use strict';
 
+var os = require('os');
 var async = require('async');
 var nconf = require('nconf');
 var winston = require('winston');
@@ -26,7 +27,7 @@ Sockets.init = function (server) {
 		path: nconf.get('relative_path') + '/socket.io',
 	});
 
-	addRedisAdapter(io);
+	io.adapter(nconf.get('redis') ? require('../database/redis').socketAdapter() : db.socketAdapter());
 
 	io.use(socketioWildcard);
 	io.use(authorize);
@@ -84,6 +85,7 @@ function onConnect(socket) {
 
 	socket.join('sess_' + socket.request.signedCookies[nconf.get('sessionKey')]);
 	io.sockets.sockets[socket.id].emit('checkSession', socket.uid);
+	io.sockets.sockets[socket.id].emit('setHostname', os.hostname());
 }
 
 function onMessage(socket, payload) {
@@ -93,8 +95,7 @@ function onMessage(socket, payload) {
 
 	var eventName = payload.data[0];
 	var params = payload.data[1];
-	var callback = typeof payload.data[payload.data.length - 1] === 'function' ? payload.data[payload.data.length - 1] : function () {
-	};
+	var callback = typeof payload.data[payload.data.length - 1] === 'function' ? payload.data[payload.data.length - 1] : function () {};
 
 	if (!eventName) {
 		return winston.warn('[socket.io] Empty method name');
@@ -151,7 +152,7 @@ function onMessage(socket, payload) {
 
 function requireModules() {
 	var modules = ['admin', 'categories', 'groups', 'meta', 'modules',
-		'notifications', 'plugins', 'posts', 'topics', 'user', 'blacklist',
+		'notifications', 'plugins', 'posts', 'topics', 'user', 'blacklist', 'flags',
 	];
 
 	modules.forEach(function (module) {
@@ -211,18 +212,6 @@ function authorize(socket, callback) {
 			});
 		},
 	], callback);
-}
-
-function addRedisAdapter(io) {
-	if (nconf.get('redis')) {
-		var redisAdapter = require('socket.io-redis');
-		var redis = require('../database/redis');
-		var pub = redis.connect();
-		var sub = redis.connect();
-		io.adapter(redisAdapter({ pubClient: pub, subClient: sub }));
-	} else if (nconf.get('isCluster') === 'true') {
-		winston.warn('[socket.io] Clustering detected, you are advised to configure Redis as a websocket store.');
-	}
 }
 
 Sockets.in = function (room) {

@@ -2,10 +2,11 @@
 'use strict';
 
 var async = require('async');
+var _ = require('lodash');
 var validator = require('validator');
-var S = require('string');
+
 var db = require('../database');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 var plugins = require('../plugins');
 var analytics = require('../analytics');
 var user = require('../user');
@@ -64,6 +65,9 @@ module.exports = function (Topics) {
 						], timestamp, topicData.tid, next);
 					},
 					function (next) {
+						db.sortedSetAdd('cid:' + topicData.cid + ':tids:votes', 0, topicData.tid, next);
+					},
+					function (next) {
 						categories.updateRecentTid(topicData.cid, topicData.tid, next);
 					},
 					function (next) {
@@ -81,7 +85,7 @@ module.exports = function (Topics) {
 				], next);
 			},
 			function (results, next) {
-				plugins.fireHook('action:topic.save', topicData);
+				plugins.fireHook('action:topic.save', { topic: _.clone(topicData) });
 				next(null, topicData.tid);
 			},
 		], callback);
@@ -101,23 +105,36 @@ module.exports = function (Topics) {
 			},
 			function (next) {
 				if (data.content) {
-					data.content = data.content.rtrim();
+					data.content = utils.rtrim(data.content);
 				}
+
 				check(data.content, meta.config.minimumPostLength, meta.config.maximumPostLength, 'content-too-short', 'content-too-long', next);
 			},
 			function (next) {
-				categories.exists(data.cid, next);
+				async.parallel({
+					categoryExists: function (next) {
+						categories.exists(data.cid, next);
+					},
+					canCreate: function (next) {
+						privileges.categories.can('topics:create', data.cid, data.uid, next);
+					},
+					canTag: function (next) {
+						if (!data.tags.length) {
+							return next(null, true);
+						}
+						privileges.categories.can('topics:tag', data.cid, data.uid, next);
+					},
+				}, next);
 			},
-			function (categoryExists, next) {
-				if (!categoryExists) {
+			function (results, next) {
+				if (!results.categoryExists) {
 					return next(new Error('[[error:no-category]]'));
 				}
-				privileges.categories.can('topics:create', data.cid, data.uid, next);
-			},
-			function (canCreate, next) {
-				if (!canCreate) {
+
+				if (!results.canCreate || !results.canTag) {
 					return next(new Error('[[error:no-privileges]]'));
 				}
+
 				guestHandleValid(data, next);
 			},
 			function (next) {
@@ -173,7 +190,7 @@ module.exports = function (Topics) {
 				data.postData.index = 0;
 
 				analytics.increment(['topics', 'topics:byCid:' + data.topicData.cid]);
-				plugins.fireHook('action:topic.post', data.topicData);
+				plugins.fireHook('action:topic.post', { topic: data.topicData, post: data.postData });
 
 				if (parseInt(uid, 10)) {
 					user.notifications.sendTopicNotificationToFollowers(uid, data.topicData, data.postData);
@@ -192,18 +209,17 @@ module.exports = function (Topics) {
 		var uid = data.uid;
 		var content = data.content;
 		var postData;
-		var cid;
 
 		async.waterfall([
 			function (next) {
 				Topics.getTopicField(tid, 'cid', next);
 			},
-			function (_cid, next) {
-				cid = _cid;
+			function (cid, next) {
+				data.cid = cid;
 				async.parallel({
 					topicData: async.apply(Topics.getTopicData, tid),
 					canReply: async.apply(privileges.topics.can, 'topics:reply', tid, uid),
-					isAdminOrMod: async.apply(privileges.categories.isAdminOrMod, cid, uid),
+					isAdminOrMod: async.apply(privileges.categories.isAdminOrMod, data.cid, uid),
 				}, next);
 			},
 			function (results, next) {
@@ -226,7 +242,7 @@ module.exports = function (Topics) {
 				guestHandleValid(data, next);
 			},
 			function (next) {
-				user.isReadyToPost(uid, cid, next);
+				user.isReadyToPost(uid, data.cid, next);
 			},
 			function (next) {
 				plugins.fireHook('filter:topic.reply', data, next);
@@ -234,7 +250,7 @@ module.exports = function (Topics) {
 			function (filteredData, next) {
 				content = filteredData.content || data.content;
 				if (content) {
-					content = content.rtrim();
+					content = utils.rtrim(content);
 				}
 
 				check(content, meta.config.minimumPostLength, meta.config.maximumPostLength, 'content-too-short', 'content-too-long', next);
@@ -267,8 +283,8 @@ module.exports = function (Topics) {
 				}
 
 				Topics.notifyFollowers(postData, uid);
-				analytics.increment(['posts', 'posts:byCid:' + cid]);
-				plugins.fireHook('action:topic.reply', postData);
+				analytics.increment(['posts', 'posts:byCid:' + data.cid]);
+				plugins.fireHook('action:topic.reply', { post: _.clone(postData) });
 
 				next(null, postData);
 			},
@@ -319,7 +335,7 @@ module.exports = function (Topics) {
 				postData.display_move_tools = true;
 				postData.selfPost = false;
 				postData.timestampISO = utils.toISOString(postData.timestamp);
-				postData.topic.title = validator.escape(String(postData.topic.title));
+				postData.topic.title = String(postData.topic.title);
 
 				next(null, postData);
 			},
@@ -329,10 +345,10 @@ module.exports = function (Topics) {
 	function check(item, min, max, minError, maxError, callback) {
 		// Trim and remove HTML (latter for composers that send in HTML, like redactor)
 		if (typeof item === 'string') {
-			item = S(item).stripTags().s.trim();
+			item = utils.stripHTMLTags(item).trim();
 		}
 
-		if (!item || item.length < parseInt(min, 10)) {
+		if (item === null || item === undefined || item.length < parseInt(min, 10)) {
 			return callback(new Error('[[error:' + minError + ', ' + min + ']]'));
 		} else if (item.length > parseInt(max, 10)) {
 			return callback(new Error('[[error:' + maxError + ', ' + max + ']]'));

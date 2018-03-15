@@ -6,7 +6,8 @@ define('forum/account/header', [
 	'pictureCropper',
 	'components',
 	'translator',
-], function (coverPhoto, pictureCropper, components, translator) {
+	'benchpress',
+], function (coverPhoto, pictureCropper, components, translator, Benchpress) {
 	var AccountHeader = {};
 	var isAdminOrSelfOrGlobalMod;
 
@@ -51,6 +52,7 @@ define('forum/account/header', [
 		components.get('account/ban').on('click', banAccount);
 		components.get('account/unban').on('click', unbanAccount);
 		components.get('account/delete').on('click', deleteAccount);
+		components.get('account/flag').on('click', flagAccount);
 	};
 
 	function hidePrivateLinks() {
@@ -71,7 +73,8 @@ define('forum/account/header', [
 	}
 
 	function setupCoverPhoto() {
-		coverPhoto.init(components.get('account/cover'),
+		coverPhoto.init(
+			components.get('account/cover'),
 			function (imageData, position, callback) {
 				socket.emit('user.updateCover', {
 					uid: ajaxify.data.uid,
@@ -90,7 +93,8 @@ define('forum/account/header', [
 					paramValue: ajaxify.data.theirid,
 					accept: '.png,.jpg,.bmp',
 				}, function (imageUrlOnServer) {
-					components.get('account/cover').css('background-image', 'url(' + imageUrlOnServer + '?' + config['cache-buster'] + ')');
+					imageUrlOnServer = (!imageUrlOnServer.startsWith('http') ? config.relative_path : '') + imageUrlOnServer + '?' + Date.now();
+					components.get('account/cover').css('background-image', 'url(' + imageUrlOnServer + ')');
 				});
 			},
 			removeCover
@@ -113,7 +117,7 @@ define('forum/account/header', [
 	}
 
 	function banAccount() {
-		templates.parse('admin/partials/temporary-ban', {}, function (html) {
+		Benchpress.parse('admin/partials/temporary-ban', {}, function (html) {
 			bootbox.dialog({
 				className: 'ban-modal',
 				title: '[[user:ban_account]]',
@@ -131,7 +135,8 @@ define('forum/account/header', [
 								data[cur.name] = cur.value;
 								return data;
 							}, {});
-							var until = parseInt(formData.length, 10) ? (Date.now() + (formData.length * 1000 * 60 * 60 * (parseInt(formData.unit, 10) ? 24 : 1))) : 0;
+
+							var until = formData.length > 0 ? (Date.now() + (formData.length * 1000 * 60 * 60 * (parseInt(formData.unit, 10) ? 24 : 1))) : 0;
 
 							socket.emit('user.banUsers', {
 								uids: [ajaxify.data.theirid],
@@ -173,6 +178,15 @@ define('forum/account/header', [
 					app.alertSuccess('[[user:account-deleted]]');
 					history.back();
 				});
+			});
+		});
+	}
+
+	function flagAccount() {
+		require(['flags'], function (flags) {
+			flags.showFlagModal({
+				type: 'user',
+				id: ajaxify.data.uid,
 			});
 		});
 	}

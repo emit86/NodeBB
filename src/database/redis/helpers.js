@@ -1,6 +1,8 @@
 'use strict';
 
-var helpers = {};
+var helpers = module.exports;
+
+helpers.noop = function () {};
 
 helpers.multiKeys = function (redisClient, command, keys, callback) {
 	callback = callback || function () {};
@@ -15,7 +17,7 @@ helpers.multiKeysValue = function (redisClient, command, keys, value, callback) 
 	callback = callback || function () {};
 	var multi = redisClient.multi();
 	for (var i = 0; i < keys.length; i += 1) {
-		multi[command](keys[i], value);
+		multi[command](String(keys[i]), String(value));
 	}
 	multi.exec(callback);
 };
@@ -24,7 +26,7 @@ helpers.multiKeyValues = function (redisClient, command, key, values, callback) 
 	callback = callback || function () {};
 	var multi = redisClient.multi();
 	for (var i = 0; i < values.length; i += 1) {
-		multi[command](key, values[i]);
+		multi[command](String(key), String(values[i]));
 	}
 	multi.exec(callback);
 };
@@ -35,5 +37,3 @@ helpers.resultsToBool = function (results) {
 	}
 	return results;
 };
-
-module.exports = helpers;

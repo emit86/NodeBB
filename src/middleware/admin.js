@@ -5,6 +5,7 @@ var winston = require('winston');
 var user = require('../user');
 var meta = require('../meta');
 var plugins = require('../plugins');
+var jsesc = require('jsesc');
 
 var controllers = {
 	api: require('../controllers/api'),
@@ -15,31 +16,21 @@ module.exports = function (middleware) {
 	middleware.admin = {};
 	middleware.admin.isAdmin = function (req, res, next) {
 		winston.warn('[middleware.admin.isAdmin] deprecation warning, no need to use this from plugins!');
-
-		if (!req.user) {
-			return controllers.helpers.notAllowed(req, res);
-		}
-
-		user.isAdministrator(req.user.uid, function (err, isAdmin) {
-			if (err || isAdmin) {
-				return next(err);
-			}
-
-			controllers.helpers.notAllowed(req, res);
-		});
+		middleware.isAdmin(req, res, next);
 	};
 
 	middleware.admin.buildHeader = function (req, res, next) {
 		res.locals.renderAdminHeader = true;
 
-		controllers.api.getConfig(req, res, function (err, config) {
-			if (err) {
-				return next(err);
-			}
-
-			res.locals.config = config;
-			next();
-		});
+		async.waterfall([
+			function (next) {
+				controllers.api.getConfig(req, res, next);
+			},
+			function (config, next) {
+				res.locals.config = config;
+				next();
+			},
+		], next);
 	};
 
 	middleware.admin.renderHeader = function (req, res, data, next) {
@@ -47,43 +38,28 @@ module.exports = function (middleware) {
 			plugins: [],
 			authentication: [],
 		};
-
-		user.getUserFields(req.uid, ['username', 'userslug', 'email', 'picture', 'email:confirmed'], function (err, userData) {
-			if (err) {
-				return next(err);
-			}
-
-			userData.uid = req.uid;
-			userData['email:confirmed'] = parseInt(userData['email:confirmed'], 10) === 1;
-
-			async.parallel({
-				scripts: function (next) {
-					plugins.fireHook('filter:admin.scripts.get', [], function (err, scripts) {
-						if (err) {
-							return next(err);
-						}
-						var arr = [];
-						scripts.forEach(function (script) {
-							arr.push({ src: script });
-						});
-
-						next(null, arr);
-					});
-				},
-				custom_header: function (next) {
-					plugins.fireHook('filter:admin.header.build', custom_header, next);
-				},
-				config: function (next) {
-					controllers.api.getConfig(req, res, next);
-				},
-				configs: function (next) {
-					meta.configs.list(next);
-				},
-			}, function (err, results) {
-				if (err) {
-					return next(err);
-				}
-				res.locals.config = results.config;
+		res.locals.config = res.locals.config || {};
+		async.waterfall([
+			function (next) {
+				async.parallel({
+					userData: function (next) {
+						user.getUserFields(req.uid, ['username', 'userslug', 'email', 'picture', 'email:confirmed'], next);
+					},
+					scripts: function (next) {
+						getAdminScripts(next);
+					},
+					custom_header: function (next) {
+						plugins.fireHook('filter:admin.header.build', custom_header, next);
+					},
+					configs: function (next) {
+						meta.configs.list(next);
+					},
+				}, next);
+			},
+			function (results, next) {
+				var userData = results.userData;
+				userData.uid = req.uid;
+				userData['email:confirmed'] = parseInt(userData['email:confirmed'], 10) === 1;
 
 				var acpPath = req.path.slice(1).split('/');
 				acpPath.forEach(function (path, i) {
@@ -92,12 +68,12 @@ module.exports = function (middleware) {
 				acpPath = acpPath.join(' > ');
 
 				var templateValues = {
-					config: results.config,
-					configJSON: JSON.stringify(results.config),
-					relative_path: results.config.relative_path,
+					config: res.locals.config,
+					configJSON: jsesc(JSON.stringify(res.locals.config), { isScriptContext: true }),
+					relative_path: res.locals.config.relative_path,
 					adminConfigJSON: encodeURIComponent(JSON.stringify(results.configs)),
 					user: userData,
-					userJSON: JSON.stringify(userData).replace(/'/g, "\\'"),
+					userJSON: jsesc(JSON.stringify(userData), { isScriptContext: true }),
 					plugins: results.custom_header.plugins,
 					authentication: results.custom_header.authentication,
 					scripts: results.scripts,
@@ -111,10 +87,22 @@ module.exports = function (middleware) {
 				templateValues.template[res.locals.template] = true;
 
 				req.app.render('admin/header', templateValues, next);
-			});
-		});
+			},
+		], next);
 	};
 
+	function getAdminScripts(callback) {
+		async.waterfall([
+			function (next) {
+				plugins.fireHook('filter:admin.scripts.get', [], next);
+			},
+			function (scripts, next) {
+				next(null, scripts.map(function (script) {
+					return { src: script };
+				}));
+			},
+		], callback);
+	}
 
 	middleware.admin.renderFooter = function (req, res, data, next) {
 		req.app.render('admin/footer', data, next);

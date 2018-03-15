@@ -1,19 +1,22 @@
 
-
 'use strict';
 
 var async = require('async');
-var S = require('string');
+var _ = require('lodash');
+var winston = require('winston');
 
 var meta = require('../meta');
 var user = require('../user');
 var posts = require('../posts');
 var plugins = require('../plugins');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
 
 module.exports = function (Topics) {
+	var stripTeaserTags = utils.stripTags.concat(['img']);
+
 	Topics.getTeasers = function (topics, uid, callback) {
 		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeasers] this usage is deprecated please provide uid');
 			callback = uid;
 			uid = 0;
 		}
@@ -56,11 +59,9 @@ module.exports = function (Topics) {
 			},
 			function (_postData, next) {
 				postData = _postData;
-				var uids = postData.map(function (post) {
+				var uids = _.uniq(postData.map(function (post) {
 					return post.uid;
-				}).filter(function (uid, index, array) {
-					return array.indexOf(uid) === index;
-				});
+				}));
 
 				user.getUsersFields(uids, ['uid', 'username', 'userslug', 'picture'], next);
 			},
@@ -91,8 +92,7 @@ module.exports = function (Topics) {
 					if (tidToPost[topic.tid]) {
 						tidToPost[topic.tid].index = meta.config.teaserPost === 'first' ? 1 : counts[index];
 						if (tidToPost[topic.tid].content) {
-							var s = S(tidToPost[topic.tid].content);
-							tidToPost[topic.tid].content = s.stripTags.apply(s, utils.stripTags).s;
+							tidToPost[topic.tid].content = utils.stripHTMLTags(tidToPost[topic.tid].content, stripTeaserTags);
 						}
 					}
 					return tidToPost[topic.tid];
@@ -108,6 +108,7 @@ module.exports = function (Topics) {
 
 	Topics.getTeasersByTids = function (tids, uid, callback) {
 		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeasersByTids] this usage is deprecated please provide uid');
 			callback = uid;
 			uid = 0;
 		}
@@ -116,7 +117,7 @@ module.exports = function (Topics) {
 		}
 		async.waterfall([
 			function (next) {
-				Topics.getTopicsFields(tids, ['tid', 'postcount', 'teaserPid'], next);
+				Topics.getTopicsFields(tids, ['tid', 'postcount', 'teaserPid', 'mainPid'], next);
 			},
 			function (topics, next) {
 				Topics.getTeasers(topics, uid, next);
@@ -126,6 +127,7 @@ module.exports = function (Topics) {
 
 	Topics.getTeaser = function (tid, uid, callback) {
 		if (typeof uid === 'function') {
+			winston.warn('[Topics.getTeaser] this usage is deprecated please provide uid');
 			callback = uid;
 			uid = 0;
 		}
@@ -135,17 +137,18 @@ module.exports = function (Topics) {
 	};
 
 	Topics.updateTeaser = function (tid, callback) {
-		Topics.getLatestUndeletedReply(tid, function (err, pid) {
-			if (err) {
-				return callback(err);
-			}
-
-			pid = pid || null;
-			if (pid) {
-				Topics.setTopicField(tid, 'teaserPid', pid, callback);
-			} else {
-				Topics.deleteTopicField(tid, 'teaserPid', callback);
-			}
-		});
+		async.waterfall([
+			function (next) {
+				Topics.getLatestUndeletedReply(tid, next);
+			},
+			function (pid, next) {
+				pid = pid || null;
+				if (pid) {
+					Topics.setTopicField(tid, 'teaserPid', pid, next);
+				} else {
+					Topics.deleteTopicField(tid, 'teaserPid', next);
+				}
+			},
+		], callback);
 	};
 };

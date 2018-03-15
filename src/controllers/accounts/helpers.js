@@ -4,14 +4,16 @@
 var async = require('async');
 var validator = require('validator');
 var winston = require('winston');
+var nconf = require('nconf');
 
 var user = require('../../user');
 var groups = require('../../groups');
 var plugins = require('../../plugins');
 var meta = require('../../meta');
-var utils = require('../../../public/src/utils');
+var utils = require('../../utils');
+var privileges = require('../../privileges');
 
-var helpers = {};
+var helpers = module.exports;
 
 helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 	async.waterfall([
@@ -48,17 +50,38 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 				ips: function (next) {
 					user.getIPs(uid, 4, next);
 				},
-				profile_links: function (next) {
+				profile_links: function (next) { // DEPRECATED, do not use
 					plugins.fireHook('filter:user.profileLinks', [], next);
 				},
 				profile_menu: function (next) {
-					plugins.fireHook('filter:user.profileMenu', { uid: uid, callerUID: callerUID, links: [] }, next);
+					plugins.fireHook('filter:user.profileMenu', {
+						uid: uid,
+						callerUID: callerUID,
+						links: [{
+							id: 'info',
+							route: 'info',
+							name: '[[user:account_info]]',
+							visibility: {
+								self: false,
+								other: false,
+								moderator: true,
+								globalMod: true,
+								admin: true,
+							},
+						}],
+					}, next);
 				},
 				groups: function (next) {
 					groups.getUserGroups([uid], next);
 				},
 				sso: function (next) {
 					plugins.fireHook('filter:auth.list', { uid: uid, associations: [] }, next);
+				},
+				canEdit: function (next) {
+					privileges.users.canEdit(callerUID, uid, next);
+				},
+				canBanUser: function (next) {
+					privileges.users.canBanUser(callerUID, uid, next);
 				},
 			}, next);
 		},
@@ -80,17 +103,17 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 
 			userData.emailClass = 'hide';
 
-			if (!(isAdmin || isGlobalModerator || isSelf || (userData.email && userSettings.showemail))) {
+			if (!isAdmin && !isGlobalModerator && !isSelf && (!userSettings.showemail || parseInt(meta.config.hideEmail, 10) === 1)) {
 				userData.email = '';
 			} else if (!userSettings.showemail) {
 				userData.emailClass = '';
 			}
 
-			if (!isAdmin && !isGlobalModerator && !isSelf && !userSettings.showfullname) {
+			if (!isAdmin && !isGlobalModerator && !isSelf && (!userSettings.showfullname || parseInt(meta.config.hideFullname, 10) === 1)) {
 				userData.fullname = '';
 			}
 
-			if (isAdmin || isSelf || (isGlobalModerator && !results.isTargetAdmin)) {
+			if (isAdmin || isSelf || ((isGlobalModerator || isModerator) && !results.isTargetAdmin)) {
 				userData.ips = results.ips;
 			}
 
@@ -98,7 +121,6 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 				userData.moderationNote = undefined;
 			}
 
-			userData.uid = userData.uid;
 			userData.yourid = callerUID;
 			userData.theirid = userData.uid;
 			userData.isTargetAdmin = results.isTargetAdmin;
@@ -108,8 +130,8 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 			userData.isAdminOrGlobalModerator = isAdmin || isGlobalModerator;
 			userData.isAdminOrGlobalModeratorOrModerator = isAdmin || isGlobalModerator || isModerator;
 			userData.isSelfOrAdminOrGlobalModerator = isSelf || isAdmin || isGlobalModerator;
-			userData.canEdit = isAdmin || (isGlobalModerator && !results.isTargetAdmin);
-			userData.canBan = isAdmin || (isGlobalModerator && !results.isTargetAdmin);
+			userData.canEdit = results.canEdit;
+			userData.canBan = results.canBanUser;
 			userData.canChangePassword = isAdmin || (isSelf && parseInt(meta.config['password:disableEdit'], 10) !== 1);
 			userData.isSelf = isSelf;
 			userData.isFollowing = results.isFollowing;
@@ -119,7 +141,13 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 			userData['reputation:disabled'] = parseInt(meta.config['reputation:disabled'], 10) === 1;
 			userData['downvote:disabled'] = parseInt(meta.config['downvote:disabled'], 10) === 1;
 			userData['email:confirmed'] = !!parseInt(userData['email:confirmed'], 10);
-			userData.profile_links = filterLinks(results.profile_links.concat(results.profile_menu.links), isSelf);
+			userData.profile_links = filterLinks(results.profile_links.concat(results.profile_menu.links), {
+				self: isSelf,
+				other: !isSelf,
+				moderator: isModerator,
+				globalMod: isGlobalModerator,
+				admin: isAdmin,
+			});
 
 			userData.sso = results.sso.associations;
 			userData.status = user.getStatus(userData);
@@ -138,7 +166,12 @@ helpers.getUserDataByUserSlug = function (userslug, callerUID, callback) {
 			userData.birthday = validator.escape(String(userData.birthday || ''));
 			userData.moderationNote = validator.escape(String(userData.moderationNote || ''));
 
-			userData['cover:url'] = userData['cover:url'] || require('../../coverPhoto').getDefaultProfileCover(userData.uid);
+			if (userData['cover:url']) {
+				userData['cover:url'] = userData['cover:url'].startsWith('http') ? userData['cover:url'] : (nconf.get('relative_path') + userData['cover:url']);
+			} else {
+				userData['cover:url'] = require('../../coverPhoto').getDefaultProfileCover(userData.uid);
+			}
+
 			userData['cover:position'] = validator.escape(String(userData['cover:position'] || '50% 50%'));
 			userData['username:disableEdit'] = !userData.isAdmin && parseInt(meta.config['username:disableEdit'], 10) === 1;
 			userData['email:disableEdit'] = !userData.isAdmin && parseInt(meta.config['email:disableEdit'], 10) === 1;
@@ -154,10 +187,28 @@ helpers.getBaseUser = function (userslug, callerUID, callback) {
 	helpers.getUserDataByUserSlug(userslug, callerUID, callback);
 };
 
-function filterLinks(links, self) {
-	return links.filter(function (link) {
-		return link && (link.public || self);
+function filterLinks(links, states) {
+	return links.filter(function (link, index) {
+		// "public" is the old property, if visibility is defined, discard `public`
+		if (link.hasOwnProperty('public') && !link.hasOwnProperty('visibility')) {
+			winston.warn('[account/profileMenu (' + link.id + ')] Use of the `.public` property is deprecated, use `visibility` now');
+			return link && (link.public || states.self);
+		}
+
+		// Default visibility
+		link.visibility = Object.assign({
+			self: true,
+			other: true,
+			moderator: true,
+			globalMod: true,
+			admin: true,
+		}, link.visibility);
+
+		var permit = Object.keys(states).some(function (state) {
+			return states[state] && link.visibility[state];
+		});
+
+		links[index].public = permit;
+		return permit;
 	});
 }
-
-module.exports = helpers;

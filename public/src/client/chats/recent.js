@@ -5,12 +5,18 @@ define('forum/chats/recent', function () {
 	var recent = {};
 
 	recent.init = function () {
-		$('[component="chat/recent"]').on('scroll', function () {
-			var $this = $(this);
-			var bottom = ($this[0].scrollHeight - $this.height()) * 0.9;
-			if ($this.scrollTop() > bottom) {
-				loadMoreRecentChats();
-			}
+		require(['forum/chats'], function (Chats) {
+			$('[component="chat/recent"]').on('click', '[component="chat/recent/room"]', function () {
+				Chats.switchChat($(this).attr('data-roomid'));
+			});
+
+			$('[component="chat/recent"]').on('scroll', function () {
+				var $this = $(this);
+				var bottom = ($this[0].scrollHeight - $this.height()) * 0.9;
+				if ($this.scrollTop() > bottom) {
+					loadMoreRecentChats();
+				}
+			});
 		});
 	};
 

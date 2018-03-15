@@ -31,8 +31,6 @@
 	}
 
 	$(document).ready(function () {
-		setupKeybindings();
-
 		if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
 			require(['admin/modules/search'], function (search) {
 				search.init();
@@ -63,24 +61,6 @@
 		});
 	}
 
-	function setupKeybindings() {
-		require(['mousetrap', 'admin/modules/instance'], function (mousetrap, instance) {
-			mousetrap.bind('ctrl+shift+a r', function () {
-				instance.reload();
-			});
-
-			mousetrap.bind('ctrl+shift+a R', function () {
-				socket.emit('admin.restart');
-			});
-
-			mousetrap.bind('/', function () {
-				$('#acp-search input').focus();
-
-				return false;
-			});
-		});
-	}
-
 	function selectMenuItem(url) {
 		require(['translator'], function (translator) {
 			url = url
@@ -99,6 +79,10 @@
 			$('#main-menu li').removeClass('active');
 			$('#main-menu a').removeClass('active').filter('[href="' + url + '"]').each(function () {
 				var menu = $(this);
+				if (menu.parent().attr('data-link')) {
+					return;
+				}
+
 				menu
 					.parent().addClass('active')
 					.parents('.menu-item').addClass('active');
@@ -231,4 +215,10 @@
 			});
 		});
 	}
+
+	// tell ace to use the right paths when requiring modules
+	require(['ace/ace'], function (ace) {
+		ace.config.set('packaged', true);
+		ace.config.set('basePath', config.relative_path + '/assets/src/modules/ace/');
+	});
 }());

@@ -3,14 +3,15 @@
 var request = require('request');
 var nconf = require('nconf');
 var fs = require('fs');
+var winston = require('winston');
 
-var myXhr = require('../mocks/newXhr');
 var utils = require('../../public/src/utils');
 
 var helpers = module.exports;
 
 helpers.loginUser = function (username, password, callback) {
 	var jar = request.jar();
+
 	request({
 		url: nconf.get('url') + '/api/config',
 		json: true,
@@ -34,53 +35,53 @@ helpers.loginUser = function (username, password, callback) {
 			if (err || res.statusCode !== 200) {
 				return callback(err || new Error('[[error:invalid-response]]'));
 			}
-			helpers.connectSocketIO(res, function (err, io) {
-				callback(err, jar, io, body.csrf_token);
-			});
+			callback(null, jar, body.csrf_token);
+		});
+	});
+};
+
+
+helpers.logoutUser = function (jar, callback) {
+	request({
+		url: nconf.get('url') + '/api/config',
+		json: true,
+		jar: jar,
+	}, function (err, response, body) {
+		if (err) {
+			return callback(err, response, body);
+		}
+
+		request.post(nconf.get('url') + '/logout', {
+			form: {},
+			json: true,
+			jar: jar,
+			headers: {
+				'x-csrf-token': body.csrf_token,
+			},
+		}, function (err, response, body) {
+			callback(err, response, body);
 		});
 	});
 };
 
 helpers.connectSocketIO = function (res, callback) {
-	myXhr.callbacks.headerCallback = function () {
-		this.setDisableHeaderCheck(true);
-		var stdOpen = this.open;
-		this.open = function () {
-			stdOpen.apply(this, arguments);
-			this.setRequestHeader('Cookie', res.headers['set-cookie'][0].split(';')[0]);
-			this.setRequestHeader('Origin', nconf.get('url'));
-		};
-	};
+	var io = require('socket.io-client');
 
-	var socketClient = require('socket.io-client');
-
-	var io = socketClient.connect(nconf.get('base_url'), {
+	var cookie = res.headers['set-cookie'][0].split(';')[0];
+	var socket = io(nconf.get('base_url'), {
 		path: nconf.get('relative_path') + '/socket.io',
-		forceNew: true,
-		multiplex: false,
-	});
-	io.on('connect', function () {
-		callback(null, io);
+		extraHeaders: {
+			Origin: nconf.get('url'),
+			Cookie: cookie,
+		},
 	});
 
-	io.on('error', function (err) {
+	socket.on('connect', function () {
+		callback(null, socket);
+	});
+
+	socket.on('error', function (err) {
 		callback(err);
-	});
-};
-
-helpers.initSocketIO = function (callback) {
-	var jar;
-	request.get({
-		url: nconf.get('url') + '/api/config',
-		jar: jar,
-		json: true,
-	}, function (err, res) {
-		if (err) {
-			return callback(err);
-		}
-		helpers.connectSocketIO(res, function (err, io) {
-			callback(err, jar, io);
-		});
 	});
 };
 
@@ -104,7 +105,10 @@ helpers.uploadFile = function (uploadEndPoint, filePath, body, jar, csrf_token, 
 		if (err) {
 			return callback(err);
 		}
-		callback(err, res, body);
+		if (res.statusCode !== 200) {
+			winston.error(body);
+		}
+		callback(null, res, body);
 	});
 };
 
@@ -126,8 +130,8 @@ helpers.registerUser = function (data, callback) {
 			headers: {
 				'x-csrf-token': body.csrf_token,
 			},
-		}, function (err) {
-			callback(err, jar);
+		}, function (err, response, body) {
+			callback(err, jar, response, body);
 		});
 	});
 };

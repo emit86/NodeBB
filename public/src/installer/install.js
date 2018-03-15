@@ -46,7 +46,7 @@ $('document').ready(function () {
 
 			return false;
 		}
-		$('#submit .fa-spin').removeClass('hide');
+		$('#submit .working').removeClass('hide');
 	}
 
 	function activate(type, el) {
@@ -112,12 +112,17 @@ $('document').ready(function () {
 	}
 
 	function launchForum() {
-		$('#launch .fa-spin').removeClass('hide');
+		$('#launch .working').removeClass('hide');
 
 		$.post('/launch', function () {
+			var successCount = 0;
 			setInterval(function () {
 				$.get('/admin').done(function () {
-					window.location = 'admin';
+					if (successCount >= 5) {
+						window.location = 'admin';
+					} else {
+						successCount += 1;
+					}
 				});
 			}, 750);
 		});

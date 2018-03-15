@@ -3,6 +3,7 @@
 var async = require('async');
 
 var topics = require('../topics');
+var posts = require('../posts');
 var websockets = require('./index');
 var user = require('../user');
 var apiController = require('../controllers/api');
@@ -15,6 +16,7 @@ require('./topics/move')(SocketTopics);
 require('./topics/tools')(SocketTopics);
 require('./topics/infinitescroll')(SocketTopics);
 require('./topics/tags')(SocketTopics);
+require('./topics/merge')(SocketTopics);
 
 SocketTopics.post = function (socket, data, callback) {
 	if (!data) {
@@ -25,6 +27,21 @@ SocketTopics.post = function (socket, data, callback) {
 	data.req = websockets.reqFromSocket(socket);
 	data.timestamp = Date.now();
 
+	async.waterfall([
+		function (next) {
+			posts.shouldQueue(socket.uid, data, next);
+		},
+		function (shouldQueue, next) {
+			if (shouldQueue) {
+				posts.addToQueue(data, next);
+			} else {
+				postTopic(socket, data, next);
+			}
+		},
+	], callback);
+};
+
+function postTopic(socket, data, callback) {
 	async.waterfall([
 		function (next) {
 			topics.post(data, next);
@@ -38,7 +55,7 @@ SocketTopics.post = function (socket, data, callback) {
 			socketHelpers.notifyNew(socket.uid, 'newTopic', { posts: [result.postData], topic: result.topicData });
 		},
 	], callback);
-};
+}
 
 SocketTopics.postcount = function (socket, tid, callback) {
 	topics.getTopicField(tid, 'postcount', callback);

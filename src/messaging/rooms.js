@@ -9,26 +9,33 @@ var plugins = require('../plugins');
 
 module.exports = function (Messaging) {
 	Messaging.getRoomData = function (roomId, callback) {
-		db.getObject('chat:room:' + roomId, function (err, data) {
-			if (err || !data) {
-				return callback(err || new Error('[[error:no-chat-room]]'));
-			}
-			modifyRoomData([data]);
-			callback(null, data);
-		});
+		async.waterfall([
+			function (next) {
+				db.getObject('chat:room:' + roomId, next);
+			},
+			function (data, next) {
+				if (!data) {
+					return callback(new Error('[[error:no-chat-room]]'));
+				}
+				modifyRoomData([data]);
+				next(null, data);
+			},
+		], callback);
 	};
 
 	Messaging.getRoomsData = function (roomIds, callback) {
 		var keys = roomIds.map(function (roomId) {
 			return 'chat:room:' + roomId;
 		});
-		db.getObjects(keys, function (err, roomData) {
-			if (err) {
-				return callback(err);
-			}
-			modifyRoomData(roomData);
-			callback(null, roomData);
-		});
+		async.waterfall([
+			function (next) {
+				db.getObjects(keys, next);
+			},
+			function (roomData, next) {
+				modifyRoomData(roomData);
+				next(null, roomData);
+			},
+		], callback);
 	};
 
 	function modifyRoomData(rooms) {
@@ -96,13 +103,14 @@ module.exports = function (Messaging) {
 	};
 
 	Messaging.isRoomOwner = function (uid, roomId, callback) {
-		db.getObjectField('chat:room:' + roomId, 'owner', function (err, owner) {
-			if (err) {
-				return callback(err);
-			}
-
-			callback(null, parseInt(uid, 10) === parseInt(owner, 10));
-		});
+		async.waterfall([
+			function (next) {
+				db.getObjectField('chat:room:' + roomId, 'owner', next);
+			},
+			function (owner, next) {
+				next(null, parseInt(uid, 10) === parseInt(owner, 10));
+			},
+		], callback);
 	};
 
 	Messaging.addUsersToRoom = function (uid, uids, roomId, callback) {
@@ -169,8 +177,43 @@ module.exports = function (Messaging) {
 				}));
 				db.sortedSetsRemove(keys, roomId, next);
 			},
+			function (next) {
+				updateOwner(roomId, next);
+			},
 		], callback);
 	};
+
+	Messaging.leaveRooms = function (uid, roomIds, callback) {
+		async.waterfall([
+			function (next) {
+				var roomKeys = roomIds.map(function (roomId) {
+					return 'chat:room:' + roomId + ':uids';
+				});
+				db.sortedSetsRemove(roomKeys, uid, next);
+			},
+			function (next) {
+				db.sortedSetRemove('uid:' + uid + ':chat:rooms', roomIds, next);
+			},
+			function (next) {
+				db.sortedSetRemove('uid:' + uid + ':chat:rooms:unread', roomIds, next);
+			},
+			function (next) {
+				async.eachSeries(roomIds, updateOwner, next);
+			},
+		], callback);
+	};
+
+	function updateOwner(roomId, callback) {
+		async.waterfall([
+			function (next) {
+				db.getSortedSetRange('chat:room:' + roomId + ':uids', 0, 0, next);
+			},
+			function (uids, next) {
+				var newOwner = uids[0] || 0;
+				db.setObjectField('chat:room:' + roomId, 'owner', newOwner, next);
+			},
+		], callback);
+	}
 
 	Messaging.getUidsInRoom = function (roomId, start, stop, callback) {
 		db.getSortedSetRevRange('chat:room:' + roomId + ':uids', start, stop, callback);

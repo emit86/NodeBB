@@ -3,7 +3,7 @@
 [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/NodeBB/NodeBB?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Build Status](https://travis-ci.org/NodeBB/NodeBB.svg?branch=master)](https://travis-ci.org/NodeBB/NodeBB)
 [![Coverage Status](https://coveralls.io/repos/github/NodeBB/NodeBB/badge.svg?branch=master)](https://coveralls.io/github/NodeBB/NodeBB?branch=master)
-[![Dependency Status](https://david-dm.org/nodebb/nodebb.svg)](https://david-dm.org/nodebb/nodebb)
+[![Dependency Status](https://david-dm.org/nodebb/nodebb.svg?path=install)](https://david-dm.org/nodebb/nodebb?path=install)
 [![Code Climate](https://codeclimate.com/github/NodeBB/NodeBB/badges/gpa.svg)](https://codeclimate.com/github/NodeBB/NodeBB)
 [![Documentation Status](https://readthedocs.org/projects/nodebb/badge/?version=latest)](https://readthedocs.org/projects/nodebb/?badge=latest)
 
@@ -50,13 +50,13 @@ Our minimalist "Persona" theme gets you going right away, no coding experience r
 
 NodeBB requires the following software to be installed:
 
-* A version of Node.js at least 4 or greater ([installation/upgrade instructions](https://github.com/nodesource/distributions))
+* A version of Node.js at least 6 or greater ([installation/upgrade instructions](https://github.com/nodesource/distributions))
 * Redis, version 2.8.9 or greater **or** MongoDB, version 2.6 or greater
 * nginx, version 1.3.13 or greater (**only if** intending to use nginx to proxy requests to a NodeBB)
 
 ## Installation
 
-[Please refer to platform-specific installation documentation](http://docs.nodebb.org/en/latest/installing/os.html)
+[Please refer to platform-specific installation documentation](https://docs.nodebb.org/installing/os)
 
 ## Securing NodeBB
 
@@ -71,7 +71,7 @@ It is important to ensure that your NodeBB and database servers are secured. Bea
 
 ## Upgrading NodeBB
 
-Detailed upgrade instructions are listed in [Upgrading NodeBB](https://docs.nodebb.org/en/latest/upgrading/index.html)
+Detailed upgrade instructions are listed in [Upgrading NodeBB](https://docs.nodebb.org/configuring/upgrade/)
 
 ## License
 

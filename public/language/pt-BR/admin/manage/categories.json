@@ -10,6 +10,7 @@
 	"custom-class": "Classe Personalizada",
 	"num-recent-replies": "# de Respostas Recentes",
 	"ext-link": "Link Externo",
+	"is-section": "Trate estacategoria como uma seção",
 	"upload-image": "Fazer upload de Imagem",
 	"delete-image": "Remover",
 	"category-image": "Imagem da Categoria",
@@ -64,5 +65,7 @@
 	"alert.find-user": "Encontrar um Usuário",
 	"alert.user-search": "Procure por um usuário aqui...",
 	"alert.find-group": "Encontre um Grupo",
-	"alert.group-search": "Pesquise por um grupo aqui..."
+	"alert.group-search": "Pesquise por um grupo aqui...",
+	"collapse-all": "Collapse All",
+	"expand-all": "Expand All"
 }

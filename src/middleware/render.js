@@ -6,7 +6,9 @@ var validator = require('validator');
 var winston = require('winston');
 
 var plugins = require('../plugins');
-var translator = require('../../public/src/modules/translator');
+var translator = require('../translator');
+var widgets = require('../widgets');
+var utils = require('../utils');
 
 module.exports = function (middleware) {
 	middleware.processRender = function (req, res, next) {
@@ -38,16 +40,26 @@ module.exports = function (middleware) {
 					options.relative_path = nconf.get('relative_path');
 					options.template = { name: template };
 					options.template[template] = true;
-					options.url = (req.baseUrl + req.path).replace(/^\/api/, '');
-					options.bodyClass = buildBodyClass(req);
-
+					options.url = (req.baseUrl + req.path.replace(/^\/api/, ''));
+					options.bodyClass = buildBodyClass(req, res, options);
 					plugins.fireHook('filter:' + template + '.build', { req: req, res: res, templateData: options }, next);
 				},
 				function (data, next) {
-					plugins.fireHook('filter:middleware.render', { req: res, res: res, templateData: data.templateData }, next);
+					plugins.fireHook('filter:middleware.render', { req: req, res: res, templateData: data.templateData }, next);
 				},
 				function (data, next) {
 					options = data.templateData;
+
+					widgets.render(req.uid, {
+						template: template + '.tpl',
+						url: options.url,
+						templateData: options,
+						req: req,
+						res: res,
+					}, next);
+				},
+				function (data, next) {
+					options.widgets = data;
 
 					res.locals.template = template;
 					options._locals = undefined;
@@ -107,25 +119,35 @@ module.exports = function (middleware) {
 
 	function translate(str, req, res, next) {
 		var language = (res.locals.config && res.locals.config.userLang) || 'en-GB';
+		if (res.locals.renderAdminHeader) {
+			language = (res.locals.config && res.locals.config.acpLang) || 'en-GB';
+		}
 		language = req.query.lang ? validator.escape(String(req.query.lang)) : language;
 		translator.translate(str, language, function (translated) {
 			next(null, translator.unescape(translated));
 		});
 	}
 
-	function buildBodyClass(req) {
+	function buildBodyClass(req, res, templateData) {
 		var clean = req.path.replace(/^\/api/, '').replace(/^\/|\/$/g, '');
 		var parts = clean.split('/').slice(0, 3);
 		parts.forEach(function (p, index) {
 			try {
 				p = decodeURIComponent(p);
 			} catch (err) {
-				winston.error(err.message);
+				winston.error(err);
 				p = '';
 			}
 			p = validator.escape(String(p));
 			parts[index] = index ? parts[0] + '-' + p : 'page-' + (p || 'home');
 		});
+
+		if (templateData.template.topic) {
+			parts.push('page-topic-category-' + templateData.category.cid);
+			parts.push('page-topic-category-' + utils.slugify(templateData.category.name));
+		}
+
+		parts.push('page-status-' + res.statusCode);
 		return parts.join(' ');
 	}
 };

@@ -5,17 +5,17 @@ var async = require('async');
 var os = require('os');
 var nconf = require('nconf');
 var winston = require('winston');
-var validator = require('validator');
+
 var topics = require('../../topics');
 var pubsub = require('../../pubsub');
 
 var stats = {};
 var totals = {};
-var SocketRooms = {
-	stats: stats,
-	totals: totals,
-};
 
+var SocketRooms = module.exports;
+
+SocketRooms.stats = stats;
+SocketRooms.totals = totals;
 
 pubsub.on('sync:stats:start', function () {
 	SocketRooms.getLocalStats(function (err, stats) {
@@ -89,7 +89,7 @@ SocketRooms.getAll = function (socket, data, callback) {
 
 	var topTenTopics = [];
 	Object.keys(totals.topics).forEach(function (tid) {
-		topTenTopics.push({ tid: tid, count: totals.topics[tid].count });
+		topTenTopics.push({ tid: tid, count: totals.topics[tid].count || 0 });
 	});
 
 	topTenTopics = topTenTopics.sort(function (a, b) {
@@ -105,13 +105,11 @@ SocketRooms.getAll = function (socket, data, callback) {
 			topics.getTopicsFields(topTenTids, ['title'], next);
 		},
 		function (titles, next) {
-			totals.topics = {};
-			topTenTopics.forEach(function (topic, index) {
-				totals.topics[topic.tid] = {
-					value: topic.count || 0,
-					title: validator.escape(String(titles[index].title)),
-				};
+			totals.topTenTopics = topTenTopics.map(function (topic, index) {
+				topic.title = titles[index].title;
+				return topic;
 			});
+
 			next(null, totals);
 		},
 	], callback);
@@ -181,6 +179,3 @@ SocketRooms.getLocalStats = function (callback) {
 
 	callback(null, socketData);
 };
-
-
-module.exports = SocketRooms;

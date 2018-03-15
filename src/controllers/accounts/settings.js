@@ -1,6 +1,7 @@
 'use strict';
 
 var async = require('async');
+var _ = require('lodash');
 
 var user = require('../../user');
 var languages = require('../../languages');
@@ -12,9 +13,7 @@ var db = require('../../database');
 var helpers = require('../helpers');
 var accountHelpers = require('./helpers');
 
-
-var settingsController = {};
-
+var settingsController = module.exports;
 
 settingsController.get = function (req, res, callback) {
 	var userData;
@@ -34,9 +33,6 @@ settingsController.get = function (req, res, callback) {
 				languages: function (next) {
 					languages.list(next);
 				},
-				homePageRoutes: function (next) {
-					getHomePageRoutes(next);
-				},
 				soundsMapping: function (next) {
 					meta.sounds.getUserSoundMap(userData.uid, next);
 				},
@@ -45,7 +41,9 @@ settingsController.get = function (req, res, callback) {
 		function (results, next) {
 			userData.settings = results.settings;
 			userData.languages = results.languages;
-			userData.homePageRoutes = results.homePageRoutes;
+			if (userData.isAdmin && userData.isSelf) {
+				userData.acpLanguages = _.cloneDeep(results.languages);
+			}
 
 			var types = [
 				'notification',
@@ -91,84 +89,148 @@ settingsController.get = function (req, res, callback) {
 		},
 		function (data, next) {
 			userData.customSettings = data.customSettings;
-			userData.disableEmailSubscriptions = parseInt(meta.config.disableEmailSubscriptions, 10) === 1;
-			next();
+			async.parallel({
+				notificationSettings: function (next) {
+					getNotificationSettings(userData, next);
+				},
+				routes: function (next) {
+					getHomePageRoutes(userData, next);
+				},
+			}, next);
 		},
-	], function (err) {
-		if (err) {
-			return callback(err);
-		}
+		function (results) {
+			userData.homePageRoutes = results.routes;
+			userData.notificationSettings = results.notificationSettings;
+			userData.disableEmailSubscriptions = parseInt(meta.config.disableEmailSubscriptions, 10) === 1;
 
-		userData.dailyDigestFreqOptions = [
-			{ value: 'off', name: '[[user:digest_off]]', selected: userData.settings.dailyDigestFreq === 'off' },
-			{ value: 'day', name: '[[user:digest_daily]]', selected: userData.settings.dailyDigestFreq === 'day' },
-			{ value: 'week', name: '[[user:digest_weekly]]', selected: userData.settings.dailyDigestFreq === 'week' },
-			{ value: 'month', name: '[[user:digest_monthly]]', selected: userData.settings.dailyDigestFreq === 'month' },
-		];
+			userData.dailyDigestFreqOptions = [
+				{ value: 'off', name: '[[user:digest_off]]', selected: userData.settings.dailyDigestFreq === 'off' },
+				{ value: 'day', name: '[[user:digest_daily]]', selected: userData.settings.dailyDigestFreq === 'day' },
+				{ value: 'week', name: '[[user:digest_weekly]]', selected: userData.settings.dailyDigestFreq === 'week' },
+				{ value: 'month', name: '[[user:digest_monthly]]', selected: userData.settings.dailyDigestFreq === 'month' },
+			];
 
+			userData.bootswatchSkinOptions = [
+				{ name: 'No skin', value: 'noskin' },
+				{ name: 'Default', value: 'default' },
+				{ name: 'Cerulean', value: 'cerulean' },
+				{ name: 'Cosmo', value: 'cosmo'	},
+				{ name: 'Cyborg', value: 'cyborg' },
+				{ name: 'Darkly', value: 'darkly' },
+				{ name: 'Flatly', value: 'flatly' },
+				{ name: 'Journal', value: 'journal'	},
+				{ name: 'Lumen', value: 'lumen' },
+				{ name: 'Paper', value: 'paper' },
+				{ name: 'Readable', value: 'readable' },
+				{ name: 'Sandstone', value: 'sandstone' },
+				{ name: 'Simplex', value: 'simplex' },
+				{ name: 'Slate', value: 'slate'	},
+				{ name: 'Spacelab', value: 'spacelab' },
+				{ name: 'Superhero', value: 'superhero' },
+				{ name: 'United', value: 'united' },
+				{ name: 'Yeti', value: 'yeti' },
+			];
 
-		userData.bootswatchSkinOptions = [
-			{ name: 'No skin', value: 'noskin' },
-			{ name: 'Default', value: 'default' },
-			{ name: 'Cerulean', value: 'cerulean' },
-			{ name: 'Cosmo', value: 'cosmo'	},
-			{ name: 'Cyborg', value: 'cyborg' },
-			{ name: 'Darkly', value: 'darkly' },
-			{ name: 'Flatly', value: 'flatly' },
-			{ name: 'Journal', value: 'journal'	},
-			{ name: 'Lumen', value: 'lumen' },
-			{ name: 'Paper', value: 'paper' },
-			{ name: 'Readable', value: 'readable' },
-			{ name: 'Sandstone', value: 'sandstone' },
-			{ name: 'Simplex', value: 'simplex' },
-			{ name: 'Slate', value: 'slate'	},
-			{ name: 'Spacelab', value: 'spacelab' },
-			{ name: 'Superhero', value: 'superhero' },
-			{ name: 'United', value: 'united' },
-			{ name: 'Yeti', value: 'yeti' },
-		];
+			userData.bootswatchSkinOptions.forEach(function (skin) {
+				skin.selected = skin.value === userData.settings.bootswatchSkin;
+			});
 
-		var isCustom = true;
-		userData.homePageRoutes.forEach(function (route) {
-			route.selected = route.route === userData.settings.homePageRoute;
-			if (route.selected) {
-				isCustom = false;
+			userData.languages.forEach(function (language) {
+				language.selected = language.code === userData.settings.userLang;
+			});
+
+			if (userData.isAdmin && userData.isSelf) {
+				userData.acpLanguages.forEach(function (language) {
+					language.selected = language.code === userData.settings.acpLang;
+				});
 			}
-		});
 
-		if (isCustom && userData.settings.homePageRoute === 'none') {
-			isCustom = false;
-		}
+			var notifFreqOptions = [
+				'all',
+				'everyTen',
+				'logarithmic',
+				'disabled',
+			];
 
-		userData.homePageRoutes.push({
-			route: 'custom',
-			name: 'Custom',
-			selected: isCustom,
-		});
+			userData.upvoteNotifFreq = notifFreqOptions.map(function (name) {
+				return {
+					name: name,
+					selected: name === userData.notifFreqOptions,
+				};
+			});
 
-		userData.bootswatchSkinOptions.forEach(function (skin) {
-			skin.selected = skin.value === userData.settings.bootswatchSkin;
-		});
+			userData.disableCustomUserSkins = parseInt(meta.config.disableCustomUserSkins, 10) === 1;
 
-		userData.languages.forEach(function (language) {
-			language.selected = language.code === userData.settings.userLang;
-		});
+			userData.allowUserHomePage = parseInt(meta.config.allowUserHomePage, 10) === 1;
 
-		userData.disableCustomUserSkins = parseInt(meta.config.disableCustomUserSkins, 10) === 1;
+			userData.hideFullname = parseInt(meta.config.hideFullname, 10) === 1;
+			userData.hideEmail = parseInt(meta.config.hideEmail, 10) === 1;
 
-		userData.allowUserHomePage = parseInt(meta.config.allowUserHomePage, 10) === 1;
+			userData.inTopicSearchAvailable = plugins.hasListeners('filter:topic.search');
 
-		userData.inTopicSearchAvailable = plugins.hasListeners('filter:topic.search');
+			userData.maxTopicsPerPage = parseInt(meta.config.maxTopicsPerPage, 10) || 20;
+			userData.maxPostsPerPage = parseInt(meta.config.maxPostsPerPage, 10) || 20;
 
-		userData.title = '[[pages:account/settings]]';
-		userData.breadcrumbs = helpers.buildBreadcrumbs([{ text: userData.username, url: '/user/' + userData.userslug }, { text: '[[user:settings]]' }]);
+			userData.title = '[[pages:account/settings]]';
+			userData.breadcrumbs = helpers.buildBreadcrumbs([{ text: userData.username, url: '/user/' + userData.userslug }, { text: '[[user:settings]]' }]);
 
-		res.render('account/settings', userData);
-	});
+			res.render('account/settings', userData);
+		},
+	], callback);
 };
 
+function getNotificationSettings(userData, callback) {
+	var types = [
+		'notificationType_upvote',
+		'notificationType_new-topic',
+		'notificationType_new-reply',
+		'notificationType_follow',
+		'notificationType_new-chat',
+		'notificationType_group-invite',
+	];
 
-function getHomePageRoutes(callback) {
+	var privilegedTypes = [];
+
+	async.waterfall([
+		function (next) {
+			user.getPrivileges(userData.uid, next);
+		},
+		function (privileges, next) {
+			if (privileges.isAdmin) {
+				privilegedTypes.push('notificationType_new-register');
+			}
+			if (privileges.isAdmin || privileges.isGlobalMod || privileges.isModeratorOfAnyCategory) {
+				privilegedTypes.push('notificationType_post-queue', 'notificationType_new-post-flag');
+			}
+			if (privileges.isAdmin || privileges.isGlobalMod) {
+				privilegedTypes.push('notificationType_new-user-flag');
+			}
+			plugins.fireHook('filter:user.notificationTypes', {
+				userData: userData,
+				types: types,
+				privilegedTypes: privilegedTypes,
+			}, next);
+		},
+		function (results, next) {
+			function modifyType(type) {
+				var setting = userData.settings[type];
+
+				return {
+					name: type,
+					label: '[[notifications:' + type + ']]',
+					none: setting === 'none',
+					notification: setting === 'notification',
+					email: setting === 'email',
+					notificationemail: setting === 'notificationemail',
+				};
+			}
+			var notificationSettings = results.types.map(modifyType).concat(results.privilegedTypes.map(modifyType));
+			next(null, notificationSettings);
+		},
+	], callback);
+}
+
+function getHomePageRoutes(userData, callback) {
 	async.waterfall([
 		function (next) {
 			db.getSortedSetRange('cid:0:children', 0, -1, next);
@@ -203,16 +265,44 @@ function getHomePageRoutes(callback) {
 					name: 'Recent',
 				},
 				{
+					route: 'top',
+					name: 'Top',
+				},
+				{
 					route: 'popular',
 					name: 'Popular',
 				},
-			].concat(categoryData) }, next);
+			].concat(categoryData, [
+				{
+					route: 'custom',
+					name: 'Custom',
+				},
+			]) }, next);
 		},
 		function (data, next) {
+			// Set selected for each route
+			var customIdx;
+			var hasSelected = false;
+			data.routes = data.routes.map(function (route, idx) {
+				if (route.route === userData.settings.homePageRoute) {
+					route.selected = true;
+					hasSelected = true;
+				} else {
+					route.selected = false;
+				}
+
+				if (route.route === 'custom') {
+					customIdx = idx;
+				}
+
+				return route;
+			});
+
+			if (!hasSelected && customIdx && userData.settings.homePageRoute !== 'none') {
+				data.routes[customIdx].selected = true;
+			}
+
 			next(null, data.routes);
 		},
 	], callback);
 }
-
-
-module.exports = settingsController;

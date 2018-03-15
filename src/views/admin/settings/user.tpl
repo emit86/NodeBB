@@ -71,6 +71,18 @@
 					<span class="mdl-switch__label"><strong>[[admin/settings/user:user-info-private]]</strong></span>
 				</label>
 			</div>
+			<div class="checkbox">
+				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
+					<input class="mdl-switch__input" type="checkbox" data-field="hideFullname">
+					<span class="mdl-switch__label"><strong>[[admin/settings/user:hide-fullname]]</strong></span>
+				</label>
+			</div>
+			<div class="checkbox">
+				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
+					<input class="mdl-switch__input" type="checkbox" data-field="hideEmail">
+					<span class="mdl-switch__label"><strong>[[admin/settings/user:hide-email]]</strong></span>
+				</label>
+			</div>
 		</form>
 	</div>
 </div>
@@ -93,6 +105,13 @@
 	<div class="col-sm-2 col-xs-12 settings-header">[[admin/settings/user:account-protection]]</div>
 	<div class="col-sm-10 col-xs-12">
 		<form>
+			<div class="form-group">
+				<label for="adminReloginDuration">[[admin/settings/user:admin-relogin-duration]]</label>
+				<input id="adminReloginDuration" type="text" class="form-control" data-field="adminReloginDuration" placeholder="60" />
+				<p class="help-block">
+					[[admin/settings/user:admin-relogin-duration-help]]
+				</p>
+			</div>
 			<div class="form-group">
 				<label for="loginAttempts">[[admin/settings/user:login-attempts]]</label>
 				<input id="loginAttempts" type="text" class="form-control" data-field="loginAttempts" placeholder="5" />
@@ -156,6 +175,13 @@
 				</p>
 			</div>
 			<div class="form-group">
+				<label>[[admin/settings/user:invite-expiration]]</label>
+				<input type="number" class="form-control" data-field="inviteExpiration" placeholder="7">
+				<p class="help-block">
+					[[admin/settings/user:invite-expiration-help]]
+				</p>
+			</div>
+			<div class="form-group">
 				<label>[[admin/settings/user:min-username-length]]</label>
 				<input type="text" class="form-control" value="2" data-field="minimumUsernameLength">
 			</div>
@@ -166,6 +192,16 @@
 			<div class="form-group">
 				<label>[[admin/settings/user:min-password-length]]</label>
 				<input type="text" class="form-control" value="6" data-field="minimumPasswordLength">
+			</div>
+			<div class="form-group">
+				<label>[[admin/settings/user:min-password-strength]]</label>
+				<select class="form-control" data-field="minimumPasswordStrength">
+					<option value="0">0 - too guessable: risky password</option>
+					<option value="1">1 - very guessable</option>
+					<option value="2">2 - somewhat guessable</option>
+					<option value="3">3 - safely unguessable</option>
+					<option value="4">4 - very unguessable</option>
+				</select>
 			</div>
 			<div class="form-group">
 				<label>[[admin/settings/user:max-about-me-length]]</label>
@@ -196,7 +232,6 @@
 	<div class="col-sm-2 col-xs-12 settings-header">[[admin/settings/user:default-user-settings]]</div>
 	<div class="col-sm-10 col-xs-12">
 		<form>
-
 			<div class="checkbox">
 				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
 					<input class="mdl-switch__input" type="checkbox" data-field="showemail">
@@ -244,20 +279,6 @@
 
 			<div class="checkbox">
 				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
-					<input class="mdl-switch__input" type="checkbox" data-field="sendChatNotifications">
-					<span class="mdl-switch__label"><strong>[[admin/settings/user:email-chat-notifs]]</strong></span>
-				</label>
-			</div>
-
-			<div class="checkbox">
-				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
-					<input class="mdl-switch__input" type="checkbox" data-field="sendPostNotifications">
-					<span class="mdl-switch__label"><strong>[[admin/settings/user:email-post-notif]]</strong></span>
-				</label>
-			</div>
-
-			<div class="checkbox">
-				<label class="mdl-switch mdl-js-switch mdl-js-ripple-effect">
 					<input class="mdl-switch__input" type="checkbox" data-field="followTopicsOnCreate">
 					<span class="mdl-switch__label"><strong>[[admin/settings/user:follow-created-topics]]</strong></span>
 				</label>
@@ -270,6 +291,85 @@
 				</label>
 			</div>
 
+			<label>[[admin/settings/user:default-notification-settings]]</label>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_upvote]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_upvote">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_new-topic]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_new-topic">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_new-reply]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_new-reply">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_follow]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_follow">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_new-chat]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_new-chat">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
+			<div class="row">
+				<div class="form-group col-xs-7">
+					<label>[[notifications:notificationType_group-invite]]</label>
+				</div>
+				<div class="form-group col-xs-5">
+					<select class="form-control" data-field="notificationType_group-invite">
+						<option value="none">[[notifications:none]]</option>
+						<option value="notification">[[notifications:notification_only]]</option>
+						<option value="email">[[notifications:email_only]]</option>
+						<option value="notificationemail">[[notifications:notification_and_email]]</option>
+					</select>
+				</div>
+			</div>
 		</form>
 	</div>
 </div>

@@ -1,9 +1,12 @@
 {
-	"reputation": "Reputation Settings",
-	"disable": "Disable Reputation System",
-	"disable-down-voting": "Disable Down Voting",
-	"votes-are-public": "All Votes Are Public",
-	"thresholds": "Activity Thresholds",
-	"min-rep-downvote": "Minimum reputation to downvote posts",
-	"min-rep-flag": "Minimum reputation to flag posts"
+	"reputation": "Nastavenie reputácie",
+	"disable": "Zakázať systém reputácie",
+	"disable-down-voting": "Zakázať hlasovanie",
+	"votes-are-public": "Všetky hlasovania sú verejné",
+	"thresholds": "Obmedzenie aktivity",
+	"min-rep-downvote": "Minimálna reputácia k vyjadreniu nesúhlasu s príspevkom ",
+	"min-rep-flag": "Minimálna reputácia pre označenie príspevku",
+	"min-rep-website": "Minimálna reputácia pre pridanie „Webovej stránky” do používateľského profilu",
+	"min-rep-aboutme": "Minimálna reputácia pre pridanie „O mne” do používateľského profilu",
+	"min-rep-signature": "Minimálna reputácia pre pridanie „Podpisu” do používateľského profilu"
 }

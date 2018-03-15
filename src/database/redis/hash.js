@@ -8,11 +8,17 @@ module.exports = function (redisClient, module) {
 		if (!key || !data) {
 			return callback();
 		}
+
+		if (data.hasOwnProperty('')) {
+			delete data[''];
+		}
+
 		Object.keys(data).forEach(function (key) {
 			if (data[key] === undefined) {
 				delete data[key];
 			}
 		});
+
 		redisClient.hmset(key, data, function (err) {
 			callback(err);
 		});
@@ -49,7 +55,7 @@ module.exports = function (redisClient, module) {
 		if (!Array.isArray(fields) || !fields.length) {
 			return callback(null, keys.map(function () { return {}; }));
 		}
-		var	multi = redisClient.multi();
+		var multi = redisClient.multi();
 
 		for (var x = 0; x < keys.length; x += 1) {
 			multi.hmget.apply(multi, [keys[x]].concat(fields));
@@ -96,7 +102,7 @@ module.exports = function (redisClient, module) {
 
 	module.deleteObjectField = function (key, field, callback) {
 		callback = callback || function () {};
-		if (field === null) {
+		if (key === undefined || key === null || field === undefined || field === null) {
 			return setImmediate(callback);
 		}
 		redisClient.hdel(key, field, function (err) {
@@ -111,14 +117,18 @@ module.exports = function (redisClient, module) {
 	};
 
 	module.incrObjectField = function (key, field, callback) {
-		redisClient.hincrby(key, field, 1, callback);
+		module.incrObjectFieldBy(key, field, 1, callback);
 	};
 
 	module.decrObjectField = function (key, field, callback) {
-		redisClient.hincrby(key, field, -1, callback);
+		module.incrObjectFieldBy(key, field, -1, callback);
 	};
 
 	module.incrObjectFieldBy = function (key, field, value, callback) {
+		value = parseInt(value, 10);
+		if (!key || isNaN(value)) {
+			return callback(null, null);
+		}
 		redisClient.hincrby(key, field, value, callback);
 	};
 };

@@ -1,13 +1,15 @@
 'use strict';
 
 var async = require('async');
-var S = require('string');
 
 var db = require('../database');
 var user = require('../user');
-var utils = require('../../public/src/utils');
+var utils = require('../utils');
+var plugins = require('../plugins');
 
 module.exports = function (Messaging) {
+	Messaging.newMessageCutoff = 1000 * 60 * 3;
+
 	Messaging.getMessageField = function (mid, field, callback) {
 		Messaging.getMessageFields(mid, [field], function (err, fields) {
 			callback(err, fields ? fields[field] : null);
@@ -49,11 +51,14 @@ module.exports = function (Messaging) {
 					return msg && msg.fromuid;
 				});
 
-				user.getUsersFields(uids, ['uid', 'username', 'userslug', 'picture', 'status'], next);
+				user.getUsersFields(uids, ['uid', 'username', 'userslug', 'picture', 'status', 'banned'], next);
 			},
 			function (users, next) {
 				messages.forEach(function (message, index) {
 					message.fromUser = users[index];
+					message.fromUser.banned = !!parseInt(message.fromUser.banned, 10);
+					message.fromUser.deleted = parseInt(message.fromuid, 10) !== message.fromUser.uid && message.fromUser.uid === 0;
+
 					var self = parseInt(message.fromuid, 10) === parseInt(uid, 10);
 					message.self = self ? 1 : 0;
 					message.timestampISO = utils.toISOString(message.timestamp);
@@ -62,6 +67,8 @@ module.exports = function (Messaging) {
 					if (message.hasOwnProperty('edited')) {
 						message.editedISO = new Date(parseInt(message.edited, 10)).toISOString();
 					}
+
+					message.deleted = !!parseInt(message.deleted, 10);
 				});
 
 				async.map(messages, function (message, next) {
@@ -70,7 +77,7 @@ module.exports = function (Messaging) {
 							return next(err);
 						}
 						message.content = result;
-						message.cleanedContent = S(result).stripTags().decodeHTMLEntities().s;
+						message.cleanedContent = utils.stripHTMLTags(utils.decodeHTMLEntities(result));
 						next(null, message);
 					});
 				}, next);
@@ -80,7 +87,7 @@ module.exports = function (Messaging) {
 					// Add a spacer in between messages with time gaps between them
 					messages = messages.map(function (message, index) {
 						// Compare timestamps with the previous message, and check if a spacer needs to be added
-						if (index > 0 && parseInt(message.timestamp, 10) > parseInt(messages[index - 1].timestamp, 10) + (1000 * 60 * 5)) {
+						if (index > 0 && parseInt(message.timestamp, 10) > parseInt(messages[index - 1].timestamp, 10) + Messaging.newMessageCutoff) {
 							// If it's been 5 minutes, this is a new set of messages
 							message.newSet = true;
 						} else if (index > 0 && message.fromuid !== messages[index - 1].fromuid) {
@@ -115,7 +122,7 @@ module.exports = function (Messaging) {
 						}
 
 						if (
-							(parseInt(messages[0].timestamp, 10) > parseInt(fields.timestamp, 10) + (1000 * 60 * 5)) ||
+							(parseInt(messages[0].timestamp, 10) > parseInt(fields.timestamp, 10) + Messaging.newMessageCutoff) ||
 							(parseInt(messages[0].fromuid, 10) !== parseInt(fields.fromuid, 10))
 						) {
 							// If it's been 5 minutes, this is a new set of messages
@@ -127,6 +134,17 @@ module.exports = function (Messaging) {
 				} else {
 					next(null, []);
 				}
+			},
+			function (messages, next) {
+				plugins.fireHook('filter:messaging.getMessages', {
+					messages: messages,
+					uid: uid,
+					roomId: roomId,
+					isNew: isNew,
+					mids: mids,
+				}, function (err, data) {
+					next(err, data && data.messages);
+				});
 			},
 		], callback);
 	};

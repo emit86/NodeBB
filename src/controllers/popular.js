@@ -1,12 +1,16 @@
 
 'use strict';
 
+var async = require('async');
 var nconf = require('nconf');
+
 var topics = require('../topics');
 var meta = require('../meta');
+var user = require('../user');
 var helpers = require('./helpers');
+var pagination = require('../pagination');
 
-var popularController = {};
+var popularController = module.exports;
 
 var anonCache = {};
 var lastUpdateTime = 0;
@@ -18,6 +22,7 @@ var terms = {
 };
 
 popularController.get = function (req, res, next) {
+	var page = parseInt(req.query.page, 10) || 1;
 	var term = terms[req.params.term];
 
 	if (!term && req.params.term) {
@@ -32,42 +37,48 @@ popularController.get = function (req, res, next) {
 		alltime: '[[global:header.popular]]',
 	};
 
-	if (!req.uid) {
+	if (!req.loggedIn) {
 		if (anonCache[term] && (Date.now() - lastUpdateTime) < 60 * 60 * 1000) {
 			return res.render('popular', anonCache[term]);
 		}
 	}
+	var settings;
+	async.waterfall([
+		function (next) {
+			user.getSettings(req.uid, next);
+		},
+		function (_settings, next) {
+			settings = _settings;
+			var start = Math.max(0, (page - 1) * settings.topicsPerPage);
+			var stop = start + settings.topicsPerPage - 1;
+			topics.getPopularTopics(term, req.uid, start, stop, next);
+		},
+		function (data) {
+			var pageCount = Math.max(1, Math.ceil(data.topicCount / settings.topicsPerPage));
 
-	topics.getPopular(term, req.uid, meta.config.topicsPerList, function (err, topics) {
-		if (err) {
-			return next(err);
-		}
+			data.title = meta.config.homePageTitle || '[[pages:home]]';
+			data['feeds:disableRSS'] = parseInt(meta.config['feeds:disableRSS'], 10) === 1;
+			data.rssFeedUrl = nconf.get('relative_path') + '/popular/' + (req.params.term || 'alltime') + '.rss';
+			data.term = term;
+			data.pagination = pagination.create(page, pageCount, req.query);
 
-		var data = {
-			topics: topics,
-			'feeds:disableRSS': parseInt(meta.config['feeds:disableRSS'], 10) === 1,
-			rssFeedUrl: nconf.get('relative_path') + '/popular/' + (req.params.term || 'daily') + '.rss',
-			title: '[[pages:popular-' + term + ']]',
-			term: term,
-		};
+			if (req.originalUrl.startsWith(nconf.get('relative_path') + '/api/popular') || req.originalUrl.startsWith(nconf.get('relative_path') + '/popular')) {
+				data.title = '[[pages:popular-' + term + ']]';
+				var breadcrumbs = [{ text: termToBreadcrumb[term] }];
 
-		if (req.path.startsWith('/api/popular') || req.path.startsWith('/popular')) {
-			var breadcrumbs = [{ text: termToBreadcrumb[term] }];
+				if (req.params.term) {
+					breadcrumbs.unshift({ text: '[[global:header.popular]]', url: '/popular' });
+				}
 
-			if (req.params.term) {
-				breadcrumbs.unshift({ text: '[[global:header.popular]]', url: '/popular' });
+				data.breadcrumbs = helpers.buildBreadcrumbs(breadcrumbs);
 			}
 
-			data.breadcrumbs = helpers.buildBreadcrumbs(breadcrumbs);
-		}
+			if (!req.loggedIn) {
+				anonCache[term] = data;
+				lastUpdateTime = Date.now();
+			}
 
-		if (!req.uid) {
-			anonCache[term] = data;
-			lastUpdateTime = Date.now();
-		}
-
-		res.render('popular', data);
-	});
+			res.render('popular', data);
+		},
+	], next);
 };
-
-module.exports = popularController;

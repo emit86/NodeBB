@@ -5,7 +5,7 @@ var async = require('async');
 var topics = require('../../topics');
 var privileges = require('../../privileges');
 var meta = require('../../meta');
-var utils = require('../../../public/src/utils');
+var utils = require('../../utils');
 var social = require('../../social');
 
 module.exports = function (SocketTopics) {
@@ -27,7 +27,7 @@ module.exports = function (SocketTopics) {
 				}, next);
 			},
 			function (results, next) {
-				if (!results.privileges.read || (parseInt(results.topic.deleted, 10) && !results.privileges.view_deleted)) {
+				if (!results.privileges['topics:read'] || (parseInt(results.topic.deleted, 10) && !results.privileges.view_deleted)) {
 					return callback(new Error('[[error:no-privileges]]'));
 				}
 
@@ -40,19 +40,19 @@ module.exports = function (SocketTopics) {
 				var reverse = data.topicPostSort === 'newest_to_oldest' || data.topicPostSort === 'most_votes';
 				var start = Math.max(0, parseInt(data.after, 10));
 
-				var infScrollPostsPerPage = 10;
+				var infScrollPostsPerPage = Math.max(0, Math.min(meta.config.postsPerPage || 20, parseInt(data.count, 10) || meta.config.postsPerPage || 20) - 1);
 
 				if (data.direction > 0) {
 					if (reverse) {
 						start = results.topic.postcount - start;
 					}
 				} else if (reverse) {
-					start = results.topic.postcount - start - infScrollPostsPerPage - 1;
+					start = results.topic.postcount - start - infScrollPostsPerPage;
 				} else {
-					start = start - infScrollPostsPerPage - 1;
+					start -= infScrollPostsPerPage;
 				}
 
-				var stop = start + (infScrollPostsPerPage - 1);
+				var stop = start + (infScrollPostsPerPage);
 
 				start = Math.max(0, start);
 				stop = Math.max(0, stop);
@@ -88,26 +88,37 @@ module.exports = function (SocketTopics) {
 	};
 
 	SocketTopics.loadMoreUnreadTopics = function (socket, data, callback) {
-		if (!data || !utils.isNumber(data.after) || parseInt(data.after, 10) < 0) {
-			return callback(new Error('[[error:invalid-data]]'));
-		}
-
-		var start = parseInt(data.after, 10);
-		var stop = start + 9;
-
-		topics.getUnreadTopics(data.cid, socket.uid, start, stop, data.filter, callback);
+		loadData(data, callback, function (start, stop) {
+			topics.getUnreadTopics({ cid: data.cid, uid: socket.uid, start: start, stop: stop, filter: data.filter }, callback);
+		});
 	};
 
 	SocketTopics.loadMoreRecentTopics = function (socket, data, callback) {
+		loadData(data, callback, function (start, stop) {
+			topics.getRecentTopics(data.cid, socket.uid, start, stop, data.filter, callback);
+		});
+	};
+
+	SocketTopics.loadMorePopularTopics = function (socket, data, callback) {
+		loadData(data, callback, function (start, stop) {
+			topics.getPopularTopics(data.term, socket.uid, start, stop, callback);
+		});
+	};
+
+	SocketTopics.loadMoreTopTopics = function (socket, data, callback) {
+		loadData(data, callback, function (start, stop) {
+			topics.getTopTopics(data.cid, socket.uid, start, stop, data.filter, callback);
+		});
+	};
+
+	function loadData(data, callback, loadFn) {
 		if (!data || !utils.isNumber(data.after) || parseInt(data.after, 10) < 0) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
-
 		var start = parseInt(data.after, 10);
-		var stop = start + 9;
-
-		topics.getRecentTopics(data.cid, socket.uid, start, stop, data.filter, callback);
-	};
+		var stop = start + Math.max(0, Math.min(meta.config.topicsPerPage || 20, parseInt(data.count, 10) || meta.config.topicsPerPage || 20) - 1);
+		loadFn(start, stop);
+	}
 
 	SocketTopics.loadMoreFromSet = function (socket, data, callback) {
 		if (!data || !utils.isNumber(data.after) || parseInt(data.after, 10) < 0 || !data.set) {
@@ -115,7 +126,7 @@ module.exports = function (SocketTopics) {
 		}
 
 		var start = parseInt(data.after, 10);
-		var stop = start + 9;
+		var stop = start + Math.max(0, Math.min(meta.config.topicsPerPage || 20, parseInt(data.count, 10) || meta.config.topicsPerPage || 20) - 1);
 
 		topics.getTopicsFromSet(data.set, socket.uid, start, stop, callback);
 	};

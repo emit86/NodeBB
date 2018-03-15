@@ -1,5 +1,6 @@
 {
-	"notifications": "Notifications",
-	"welcome-notification": "Welcome Notification",
-	"welcome-notification-link": "Welcome Notification Link"
+	"notifications": "Oznámenia",
+	"welcome-notification": "Uvítacie oznámenie",
+	"welcome-notification-link": "Odkaz na uvítanie",
+	"welcome-notification-uid": "Uvítanie používateľa (UID)"
 }

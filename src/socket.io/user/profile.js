@@ -15,7 +15,7 @@ module.exports = function (SocketUser) {
 
 		async.waterfall([
 			function (next) {
-				isAdminOrSelfAndPasswordMatch(socket.uid, data, next);
+				isPrivilegedOrSelfAndPasswordMatch(socket.uid, data, next);
 			},
 			function (next) {
 				SocketUser.updateProfile(socket, data, next);
@@ -29,7 +29,7 @@ module.exports = function (SocketUser) {
 		}
 		async.waterfall([
 			function (next) {
-				user.isAdminOrSelf(socket.uid, data.uid, next);
+				user.isAdminOrGlobalModOrSelf(socket.uid, data.uid, next);
 			},
 			function (next) {
 				user.updateCoverPicture(data, next);
@@ -43,7 +43,7 @@ module.exports = function (SocketUser) {
 		}
 		async.waterfall([
 			function (next) {
-				user.isAdminOrSelf(socket.uid, data.uid, next);
+				user.isAdminOrGlobalModOrSelf(socket.uid, data.uid, next);
 			},
 			function (next) {
 				user.uploadCroppedPicture(data, next);
@@ -58,7 +58,7 @@ module.exports = function (SocketUser) {
 
 		async.waterfall([
 			function (next) {
-				user.isAdminOrSelf(socket.uid, data.uid, next);
+				user.isAdminOrGlobalModOrSelf(socket.uid, data.uid, next);
 			},
 			function (next) {
 				user.removeCoverPicture(data, next);
@@ -66,33 +66,41 @@ module.exports = function (SocketUser) {
 		], callback);
 	};
 
-	function isAdminOrSelfAndPasswordMatch(uid, data, callback) {
-		async.parallel({
-			isAdmin: async.apply(user.isAdministrator, uid),
-			hasPassword: async.apply(user.hasPassword, data.uid),
-			passwordMatch: function (next) {
-				if (data.password) {
-					user.isPasswordCorrect(data.uid, data.password, next);
-				} else {
-					next(null, false);
-				}
+	function isPrivilegedOrSelfAndPasswordMatch(uid, data, callback) {
+		async.waterfall([
+			function (next) {
+				async.parallel({
+					isAdmin: async.apply(user.isAdministrator, uid),
+					isTargetAdmin: async.apply(user.isAdministrator, data.uid),
+					isGlobalMod: async.apply(user.isGlobalModerator, uid),
+					hasPassword: async.apply(user.hasPassword, data.uid),
+					passwordMatch: function (next) {
+						if (data.password) {
+							user.isPasswordCorrect(data.uid, data.password, next);
+						} else {
+							next(null, false);
+						}
+					},
+				}, next);
 			},
-		}, function (err, results) {
-			if (err) {
-				return callback(err);
-			}
-			var isSelf = parseInt(uid, 10) === parseInt(data.uid, 10);
+			function (results, next) {
+				var isSelf = parseInt(uid, 10) === parseInt(data.uid, 10);
 
-			if (!results.isAdmin && !isSelf) {
-				return callback(new Error('[[error:no-privileges]]'));
-			}
+				if (results.isTargetAdmin && !results.isAdmin) {
+					return next(new Error('[[error:no-privileges]]'));
+				}
 
-			if (isSelf && results.hasPassword && !results.passwordMatch) {
-				return callback(new Error('[[error:invalid-password]]'));
-			}
+				if ((!results.isAdmin || !results.isGlobalMod) && !isSelf) {
+					return next(new Error('[[error:no-privileges]]'));
+				}
 
-			callback();
-		});
+				if (isSelf && results.hasPassword && !results.passwordMatch) {
+					return next(new Error('[[error:invalid-password]]'));
+				}
+
+				next();
+			},
+		], callback);
 	}
 
 	SocketUser.changePassword = function (socket, data, callback) {
@@ -103,20 +111,20 @@ module.exports = function (SocketUser) {
 		if (!data || !data.uid) {
 			return callback(new Error('[[error:invalid-data]]'));
 		}
-
-		user.changePassword(socket.uid, data, function (err) {
-			if (err) {
-				return callback(err);
-			}
-
-			events.log({
-				type: 'password-change',
-				uid: socket.uid,
-				targetUid: data.uid,
-				ip: socket.ip,
-			});
-			callback();
-		});
+		async.waterfall([
+			function (next) {
+				user.changePassword(socket.uid, data, next);
+			},
+			function (next) {
+				events.log({
+					type: 'password-change',
+					uid: socket.uid,
+					targetUid: data.uid,
+					ip: socket.ip,
+				});
+				next();
+			},
+		], callback);
 	};
 
 	SocketUser.updateProfile = function (socket, data, callback) {
@@ -161,7 +169,7 @@ module.exports = function (SocketUser) {
 					data.email = oldUserData.email;
 				}
 
-				user.updateProfile(data.uid, data, next);
+				user.updateProfile(socket.uid, data, next);
 			},
 			function (userData, next) {
 				function log(type, eventData) {

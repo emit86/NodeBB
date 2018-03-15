@@ -4,14 +4,11 @@
 	function loadClient(language, namespace) {
 		return Promise.resolve(jQuery.getJSON(config.relative_path + '/assets/language/' + language + '/' + namespace + '.json?' + config['cache-buster']));
 	}
-	var warn = function () {};
-	if (typeof config === 'object' && config.environment === 'development') {
-		warn = console.warn.bind(console);
-	}
+	var warn = function () { console.warn.apply(console, arguments); };
 	if (typeof define === 'function' && define.amd) {
 		// AMD. Register as a named module
-		define('translator', ['string'], function (string) {
-			return factory(string, loadClient, warn);
+		define('translator', [], function () {
+			return factory(utils, loadClient, warn);
 		});
 	} else if (typeof module === 'object' && module.exports) {
 		// Node
@@ -37,23 +34,28 @@
 				});
 			}
 
-			module.exports = factory(require('string'), loadServer, warn);
+			module.exports = factory(require('../utils'), loadServer, warn);
 		}());
-	} else {
-		window.translator = factory(window.string, loadClient, warn);
 	}
-}(function (string, load, warn) {
+}(function (utils, load, warn) {
 	var assign = Object.assign || jQuery.extend;
-	function classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
+
+	function escapeHTML(str) {
+		return utils.escapeHTML(utils.decodeHTMLEntities(
+			String(str)
+				.replace(/[\s\xa0]+/g, ' ')
+				.replace(/^\s+|\s+$/g, '')
+		));
+	}
 
 	var Translator = (function () {
 		/**
 		 * Construct a new Translator object
 		 * @param {string} language - Language code for this translator instance
+		 * @exports translator.Translator
 		 */
 		function Translator(language) {
 			var self = this;
-			classCallCheck(self, Translator);
 
 			if (!language) {
 				throw new TypeError('Parameter `language` must be a language string. Received ' + language + (language === '' ? '(empty string)' : ''));
@@ -97,6 +99,9 @@
 			// and the strings of untranslated text in between
 			var toTranslate = [];
 
+			// to store the state of if we're currently in a top-level token for later
+			var inToken = false;
+
 			// split a translator string into an array of tokens
 			// but don't split by commas inside other translator strings
 			function split(text) {
@@ -107,10 +112,10 @@
 				var level = 0;
 
 				while (i + 2 <= len) {
-					if (text.slice(i, i + 2) === '[[') {
+					if (text[i] === '[' && text[i + 1] === '[') {
 						level += 1;
 						i += 1;
-					} else if (text.slice(i, i + 2) === ']]') {
+					} else if (text[i] === ']' && text[i + 1] === ']') {
 						level -= 1;
 						i += 1;
 					} else if (level === 0 && text[i] === ',' && text[i - 1] !== '\\') {
@@ -124,103 +129,125 @@
 				return arr;
 			}
 
+			// move to the first [[
+			cursor = str.indexOf('[[', cursor);
+
 			// the loooop, we'll go to where the cursor
 			// is equal to the length of the string since
 			// slice doesn't include the ending index
-			while (cursor + 2 <= len) {
-				// if the current position in the string looks
-				// like the beginning of a translation string
-				if (str.slice(cursor, cursor + 2) === '[[') {
-					// split the string from the last break
-					// to the character before the cursor
-					// add that to the result array
-					toTranslate.push(str.slice(lastBreak, cursor));
-					// set the cursor position past the beginning
-					// brackets of the translation string
-					cursor += 2;
-					// set the last break to our current
-					// spot since we just broke the string
-					lastBreak = cursor;
+			while (cursor + 2 <= len && cursor !== -1) {
+				// split the string from the last break
+				// to the character before the cursor
+				// add that to the result array
+				toTranslate.push(str.slice(lastBreak, cursor));
+				// set the cursor position past the beginning
+				// brackets of the translation string
+				cursor += 2;
+				// set the last break to our current
+				// spot since we just broke the string
+				lastBreak = cursor;
+				// we're in a token now
+				inToken = true;
 
-					// the current level of nesting of the translation strings
-					var level = 0;
-					var sliced;
-					// validating the current string is actually a translation
-					var textBeforeColonFound = false;
-					var colonFound = false;
-					var textAfterColonFound = false;
-					var commaAfterNameFound = false;
+				// the current level of nesting of the translation strings
+				var level = 0;
+				var char0;
+				var char1;
+				// validating the current string is actually a translation
+				var textBeforeColonFound = false;
+				var colonFound = false;
+				var textAfterColonFound = false;
+				var commaAfterNameFound = false;
 
-					while (cursor + 2 <= len) {
-						sliced = str.slice(cursor, cursor + 2);
-						// found some text after the double bracket,
-						// so this is probably a translation string
-						if (!textBeforeColonFound && validTextRegex.test(sliced[0])) {
-							textBeforeColonFound = true;
-							cursor += 1;
-						// found a colon, so this is probably a translation string
-						} else if (textBeforeColonFound && !colonFound && sliced[0] === ':') {
-							colonFound = true;
-							cursor += 1;
-						// found some text after the colon,
-						// so this is probably a translation string
-						} else if (colonFound && !textAfterColonFound && validTextRegex.test(sliced[0])) {
-							textAfterColonFound = true;
-							cursor += 1;
-						} else if (textAfterColonFound && !commaAfterNameFound && sliced[0] === ',') {
-							commaAfterNameFound = true;
-							cursor += 1;
-						// a space or comma was found before the name
-						// this isn't a translation string, so back out
-						} else if (!(textBeforeColonFound && colonFound && textAfterColonFound && commaAfterNameFound) &&
-								invalidTextRegex.test(sliced[0])) {
-							cursor += 1;
-							lastBreak -= 2;
-							if (level > 0) {
-								level -= 1;
-							} else {
-								break;
-							}
-						// if we're at the beginning of another translation string,
-						// we're nested, so add to our level
-						} else if (sliced === '[[') {
-							level += 1;
-							cursor += 2;
-						// if we're at the end of a translation string
-						} else if (sliced === ']]') {
-							// if we're at the base level, then this is the end
-							if (level === 0) {
-								// so grab the name and args
-								var result = split(str.slice(lastBreak, cursor));
-								var name = result[0];
-								var args = result.slice(1);
-
-								// add the translation promise to the array
-								toTranslate.push(this.translateKey(name, args));
-								// skip past the ending brackets
-								cursor += 2;
-								// set this as our last break
-								lastBreak = cursor;
-								// and we're no longer in a translation string,
-								// so continue with the main loop
-								break;
-							}
-							// otherwise we lower the level
+				while (cursor + 2 <= len) {
+					char0 = str[cursor];
+					char1 = str[cursor + 1];
+					// found some text after the double bracket,
+					// so this is probably a translation string
+					if (!textBeforeColonFound && validTextRegex.test(char0)) {
+						textBeforeColonFound = true;
+						cursor += 1;
+					// found a colon, so this is probably a translation string
+					} else if (textBeforeColonFound && !colonFound && char0 === ':') {
+						colonFound = true;
+						cursor += 1;
+					// found some text after the colon,
+					// so this is probably a translation string
+					} else if (colonFound && !textAfterColonFound && validTextRegex.test(char0)) {
+						textAfterColonFound = true;
+						cursor += 1;
+					} else if (textAfterColonFound && !commaAfterNameFound && char0 === ',') {
+						commaAfterNameFound = true;
+						cursor += 1;
+					// a space or comma was found before the name
+					// this isn't a translation string, so back out
+					} else if (!(textBeforeColonFound && colonFound && textAfterColonFound && commaAfterNameFound) &&
+							invalidTextRegex.test(char0)) {
+						cursor += 1;
+						lastBreak -= 2;
+						// no longer in a token
+						inToken = false;
+						if (level > 0) {
 							level -= 1;
-							// and skip past the ending brackets
-							cursor += 2;
 						} else {
-							// otherwise just move to the next character
-							cursor += 1;
+							break;
 						}
+					// if we're at the beginning of another translation string,
+					// we're nested, so add to our level
+					} else if (char0 === '[' && char1 === '[') {
+						level += 1;
+						cursor += 2;
+					// if we're at the end of a translation string
+					} else if (char0 === ']' && char1 === ']') {
+						// if we're at the base level, then this is the end
+						if (level === 0) {
+							// so grab the name and args
+							var currentSlice = str.slice(lastBreak, cursor);
+							var result = split(currentSlice);
+							var name = result[0];
+							var args = result.slice(1);
+
+							// make a backup based on the raw string of the token
+							// if there are arguments to the token
+							var backup = '';
+							if (args && args.length) {
+								backup = this.translate(currentSlice);
+							}
+							// add the translation promise to the array
+							toTranslate.push(this.translateKey(name, args, backup));
+							// skip past the ending brackets
+							cursor += 2;
+							// set this as our last break
+							lastBreak = cursor;
+							// and we're no longer in a translation string,
+							// so continue with the main loop
+							inToken = false;
+							break;
+						}
+						// otherwise we lower the level
+						level -= 1;
+						// and skip past the ending brackets
+						cursor += 2;
+					} else {
+						// otherwise just move to the next character
+						cursor += 1;
 					}
 				}
-				// move to the next character
-				cursor += 1;
+
+				// skip to the next [[
+				cursor = str.indexOf('[[', cursor);
+			}
+
+			// ending string of source
+			var last = str.slice(lastBreak);
+
+			// if we were mid-token, treat it as invalid
+			if (inToken) {
+				last = this.translate(last);
 			}
 
 			// add the remaining text after the last translation string
-			toTranslate.push(str.slice(lastBreak, cursor + 2));
+			toTranslate.push(last);
 
 			// and return a promise for the concatenated translated string
 			return Promise.all(toTranslate).then(function (translated) {
@@ -232,9 +259,10 @@
 		 * Translates a specific key and array of arguments
 		 * @param {string} name - Translation key (ex. 'global:home')
 		 * @param {string[]} args - Arguments for `%1`, `%2`, etc
+		 * @param {string|Promise<string>} backup - Text to use in case the key can't be found
 		 * @returns {Promise<string>}
 		 */
-		Translator.prototype.translateKey = function translateKey(name, args) {
+		Translator.prototype.translateKey = function translateKey(name, args, backup) {
 			var self = this;
 
 			var result = name.split(':', 2);
@@ -251,29 +279,25 @@
 			}
 
 			var translation = this.getTranslation(namespace, key);
-			var argsToTranslate = args.map(function (arg) {
-				return string(arg).collapseWhitespace().decodeHTMLEntities().escapeHTML().s;
-			}).map(function (arg) {
-				return self.translate(arg);
-			});
-
-			// so we can await all promises at once
-			argsToTranslate.unshift(translation);
-
-			return Promise.all(argsToTranslate).then(function (result) {
-				var translated = result[0];
-				var translatedArgs = result.slice(1);
-
+			return translation.then(function (translated) {
+				// check if the translation is missing first
 				if (!translated) {
 					warn('Missing translation "' + name + '"');
-					return key;
+					return backup || key;
 				}
-				var out = translated;
-				translatedArgs.forEach(function (arg, i) {
-					var escaped = arg.replace(/%/g, '&#37;').replace(/\\,/g, '&#44;');
-					out = out.replace(new RegExp('%' + (i + 1), 'g'), escaped);
+
+				var argsToTranslate = args.map(function (arg) {
+					return self.translate(escapeHTML(arg));
 				});
-				return out;
+
+				return Promise.all(argsToTranslate).then(function (translatedArgs) {
+					var out = translated;
+					translatedArgs.forEach(function (arg, i) {
+						var escaped = arg.replace(/%(?=\d)/g, '&#37;').replace(/\\,/g, '&#44;');
+						out = out.replace(new RegExp('%' + (i + 1), 'g'), escaped);
+					});
+					return out;
+				});
 			});
 		};
 
@@ -281,7 +305,7 @@
 		 * Load translation file (or use a cached version), and optionally return the translation of a certain key
 		 * @param {string} namespace - The file name of the translation namespace
 		 * @param {string} [key] - The key of the specific translation to getJSON
-		 * @returns {Promise<Object|string>}
+		 * @returns {Promise<{ [key: string]: string } | string>}
 		 */
 		Translator.prototype.getTranslation = function getTranslation(namespace, key) {
 			var translation;
@@ -299,6 +323,70 @@
 				});
 			}
 			return translation;
+		};
+
+		/**
+		 * @param {Node} node
+		 * @returns {Node[]}
+		 */
+		function descendantTextNodes(node) {
+			var textNodes = [];
+
+			function helper(node) {
+				if (node.nodeType === 3) {
+					textNodes.push(node);
+				} else {
+					for (var i = 0, c = node.childNodes, l = c.length; i < l; i += 1) {
+						helper(c[i]);
+					}
+				}
+			}
+
+			helper(node);
+			return textNodes;
+		}
+
+		/**
+		 * Recursively translate a DOM element in place
+		 * @param {Element} element - Root element to translate
+		 * @param {string[]} [attributes] - Array of node attributes to translate
+		 * @returns {Promise<void>}
+		 */
+		Translator.prototype.translateInPlace = function translateInPlace(element, attributes) {
+			attributes = attributes || ['placeholder', 'title'];
+
+			var nodes = descendantTextNodes(element);
+			var text = nodes.map(function (node) {
+				return node.nodeValue;
+			}).join('  ||  ');
+
+			var attrNodes = attributes.reduce(function (prev, attr) {
+				var tuples = Array.prototype.map.call(element.querySelectorAll('[' + attr + '*="[["]'), function (el) {
+					return [attr, el];
+				});
+				return prev.concat(tuples);
+			}, []);
+			var attrText = attrNodes.map(function (node) {
+				return node[1].getAttribute(node[0]);
+			}).join('  ||  ');
+
+			return Promise.all([
+				this.translate(text),
+				this.translate(attrText),
+			]).then(function (ref) {
+				var translated = ref[0];
+				var translatedAttrs = ref[1];
+				if (translated) {
+					translated.split('  ||  ').forEach(function (html, i) {
+						$(nodes[i]).replaceWith(html);
+					});
+				}
+				if (translatedAttrs) {
+					translatedAttrs.split('  ||  ').forEach(function (text, i) {
+						attrNodes[i][1].setAttribute(attrNodes[i][0], text);
+					});
+				}
+			});
 		};
 
 		/**
@@ -392,7 +480,7 @@
 		 * @returns {string}
 		 */
 		Translator.escape = function escape(text) {
-			return typeof text === 'string' ? text.replace(/\[\[([\S]*?)\]\]/g, '\\[\\[$1\\]\\]') : text;
+			return typeof text === 'string' ? text.replace(/\[\[/g, '&lsqb;&lsqb;').replace(/\]\]/g, '&rsqb;&rsqb;') : text;
 		};
 
 		/**
@@ -401,7 +489,7 @@
 		 * @returns {string}
 		 */
 		Translator.unescape = function unescape(text) {
-			return typeof text === 'string' ? text.replace(/\\\[\\\[([\S]*?)\\\]\\\]/g, '[[$1]]') : text;
+			return typeof text === 'string' ? text.replace(/&lsqb;|\\\[/g, '[').replace(/&rsqb;|\\\]/g, ']') : text;
 		};
 
 		/**
@@ -412,7 +500,7 @@
 		Translator.compile = function compile() {
 			var args = Array.prototype.slice.call(arguments, 0).map(function (text) {
 				// escape commas and percent signs in arguments
-				return text.replace(/%/g, '&#37;').replace(/,/g, '&#44;');
+				return String(text).replace(/%/g, '&#37;').replace(/,/g, '&#44;');
 			});
 
 			return '[[' + args.join(', ') + ']]';
@@ -421,6 +509,9 @@
 		return Translator;
 	}());
 
+	/**
+	 * @exports translator
+	 */
 	var adaptor = {
 		/**
 		 * The Translator class
@@ -449,12 +540,13 @@
 				return cb('');
 			}
 
-			Translator.create(lang).translate(text).catch(function (err) {
+			return Translator.create(lang).translate(text).then(function (output) {
+				if (cb) {
+					setTimeout(cb, 0, output);
+				}
+				return output;
+			}, function (err) {
 				warn('Translation failed: ' + err.stack);
-			}).then(function (output) {
-				cb(output);
-			}).catch(function (err) {
-				console.error(err);
 			});
 		},
 
@@ -482,52 +574,32 @@
 			adaptor.getTranslations(language, namespace, callback);
 		},
 
-		toggleTimeagoShorthand: function toggleTimeagoShorthand() {
-			var tmp = assign({}, jQuery.timeago.settings.strings);
-			jQuery.timeago.settings.strings = assign({}, adaptor.timeagoShort);
-			adaptor.timeagoShort = assign({}, tmp);
-		},
-		prepareDOM: function prepareDOM() {
-			// Load the appropriate timeago locale file,
-			// and correct NodeBB language codes to timeago codes, if necessary
-			var languageCode;
-			switch (config.userLang) {
-			case 'en-GB':
-			case 'en-US':
-				languageCode = 'en';
-				break;
-
-			case 'fa-IR':
-				languageCode = 'fa';
-				break;
-
-			case 'pt-BR':
-				languageCode = 'pt-br';
-				break;
-
-			case 'nb':
-				languageCode = 'no';
-				break;
-
-			default:
-				languageCode = config.userLang;
-				break;
+		toggleTimeagoShorthand: function toggleTimeagoShorthand(callback) {
+			function toggle() {
+				var tmp = assign({}, jQuery.timeago.settings.strings);
+				jQuery.timeago.settings.strings = assign({}, adaptor.timeagoShort);
+				adaptor.timeagoShort = assign({}, tmp);
+				if (typeof callback === 'function') {
+					callback();
+				}
 			}
 
-			jQuery.getScript(config.relative_path + '/assets/vendor/jquery/timeago/locales/jquery.timeago.' + languageCode + '.js').done(function () {
-				jQuery('.timeago').timeago();
-				adaptor.timeagoShort = assign({}, jQuery.timeago.settings.strings);
-
-				// Retrieve the shorthand timeago values as well
+			if (!adaptor.timeagoShort) {
+				var languageCode = utils.userLangToTimeagoCode(config.userLang);
+				var originalSettings = assign({}, jQuery.timeago.settings.strings);
 				jQuery.getScript(config.relative_path + '/assets/vendor/jquery/timeago/locales/jquery.timeago.' + languageCode + '-short.js').done(function () {
-					// Switch back to long-form
-					adaptor.toggleTimeagoShorthand();
+					adaptor.timeagoShort = assign({}, jQuery.timeago.settings.strings);
+					jQuery.timeago.settings.strings = assign({}, originalSettings);
+					toggle();
 				});
-			});
-
+			} else {
+				toggle();
+			}
+		},
+		prepareDOM: function prepareDOM() {
 			// Add directional code if necessary
 			adaptor.translate('[[language:dir]]', function (value) {
-				if (value) {
+				if (value && !$('html').attr('data-dir')) {
 					jQuery('html').css('direction', value).attr('data-dir', value);
 				}
 			});

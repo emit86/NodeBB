@@ -5,6 +5,7 @@ var	assert = require('assert');
 var path = require('path');
 var nconf = require('nconf');
 var request = require('request');
+var fs = require('fs');
 
 var db = require('./mocks/databasemock');
 var plugins = require('../src/plugins');
@@ -16,7 +17,6 @@ describe('Plugins', function () {
 			assert.ifError(err);
 			assert(plugins.libraries[pluginId]);
 			assert(plugins.loadedHooks['static:app.load']);
-			assert(plugins.staticDirs['nodebb-plugin-markdown/js']);
 
 			done();
 		});
@@ -95,6 +95,23 @@ describe('Plugins', function () {
 		});
 	});
 
+	it('should show installed plugins', function (done) {
+		var nodeModulesPath = plugins.nodeModulesPath;
+		plugins.nodeModulesPath = path.join(__dirname, './mocks/plugin_modules');
+
+		plugins.showInstalled(function (err, pluginsData) {
+			assert.ifError(err);
+			var paths = pluginsData.map(function (plugin) {
+				return path.relative(plugins.nodeModulesPath, plugin.path).replace(/\\/g, '/');
+			});
+			assert(paths.indexOf('nodebb-plugin-xyz') > -1);
+			assert(paths.indexOf('@nodebb/nodebb-plugin-abc') > -1);
+
+			plugins.nodeModulesPath = nodeModulesPath;
+			done();
+		});
+	});
+
 	describe('install/activate/uninstall', function () {
 		var latest;
 		var pluginName = 'nodebb-plugin-imgur';
@@ -111,6 +128,9 @@ describe('Plugins', function () {
 				assert.equal(pluginData.description, 'A Plugin that uploads images to imgur');
 				assert.equal(pluginData.active, false);
 				assert.equal(pluginData.installed, true);
+
+				var packageFile = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+				assert(packageFile.dependencies[pluginName]);
 
 				done();
 			});
@@ -144,6 +164,10 @@ describe('Plugins', function () {
 				assert.ifError(err);
 				assert.equal(pluginData.installed, false);
 				assert.equal(pluginData.active, false);
+
+				var packageFile = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+				assert(!packageFile.dependencies[pluginName]);
+
 				done();
 			});
 		});

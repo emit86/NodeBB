@@ -4,12 +4,8 @@ var fs = require('fs');
 var path = require('path');
 var async = require('async');
 
-var Languages = {};
-var	languagesPath = path.join(__dirname, '../build/public/language');
-
-Languages.init = function (next) {
-	next();
-};
+var Languages = module.exports;
+var languagesPath = path.join(__dirname, '../build/public/language');
 
 Languages.get = function (language, namespace, callback) {
 	fs.readFile(path.join(languagesPath, language, namespace + '.json'), { encoding: 'utf-8' }, function (err, data) {
@@ -27,51 +23,74 @@ Languages.get = function (language, namespace, callback) {
 	});
 };
 
-Languages.list = function (callback) {
-	var languages = [];
+var codeCache = null;
+Languages.listCodes = function (callback) {
+	if (codeCache && codeCache.length) {
+		return callback(null, codeCache);
+	}
 
-	fs.readdir(languagesPath, function (err, files) {
+	fs.readFile(path.join(languagesPath, 'metadata.json'), 'utf8', function (err, file) {
+		if (err && err.code === 'ENOENT') {
+			return callback(null, []);
+		}
 		if (err) {
 			return callback(err);
 		}
 
-		async.each(files, function (folder, next) {
-			fs.stat(path.join(languagesPath, folder), function (err, stat) {
-				if (err) {
-					return next(err);
-				}
+		var parsed;
+		try {
+			parsed = JSON.parse(file);
+		} catch (e) {
+			return callback(e);
+		}
 
-				if (!stat.isDirectory()) {
-					return next();
-				}
-
-				var configPath = path.join(languagesPath, folder, 'language.json');
-
-				fs.readFile(configPath, function (err, buffer) {
-					if (err && err.code !== 'ENOENT') {
-						return next(err);
-					}
-					if (buffer) {
-						var lang = JSON.parse(buffer.toString());
-						if (lang.name && lang.code && lang.dir) {
-							languages.push(lang);
-						}
-					}
-					next();
-				});
-			});
-		}, function (err) {
-			if (err) {
-				return callback(err);
-			}
-			// Sort alphabetically
-			languages = languages.sort(function (a, b) {
-				return a.code > b.code ? 1 : -1;
-			});
-
-			callback(err, languages);
-		});
+		var langs = parsed.languages;
+		codeCache = langs;
+		callback(null, langs);
 	});
 };
 
-module.exports = Languages;
+var listCache = null;
+Languages.list = function (callback) {
+	if (listCache && listCache.length) {
+		return callback(null, listCache);
+	}
+
+	Languages.listCodes(function (err, codes) {
+		if (err) {
+			return callback(err);
+		}
+
+		async.map(codes, function (folder, next) {
+			var configPath = path.join(languagesPath, folder, 'language.json');
+
+			fs.readFile(configPath, 'utf8', function (err, file) {
+				if (err && err.code === 'ENOENT') {
+					return next();
+				}
+				if (err) {
+					return next(err);
+				}
+				var lang;
+				try {
+					lang = JSON.parse(file);
+				} catch (e) {
+					return next(e);
+				}
+				next(null, lang);
+			});
+		}, function (err, languages) {
+			if (err) {
+				return callback(err);
+			}
+
+			// filter out invalid ones
+			languages = languages.filter(function (lang) {
+				return lang && lang.code && lang.name && lang.dir;
+			});
+
+			listCache = languages;
+			callback(null, languages);
+		});
+	});
+};

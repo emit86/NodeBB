@@ -7,171 +7,145 @@ var async = require('async');
 var path = require('path');
 var fs = require('fs');
 var nconf = require('nconf');
+var _ = require('lodash');
 
 var plugins = require('../plugins');
-var utils = require('../../public/src/utils');
+var file = require('../file');
 
-var Templates = {};
+var viewsPath = nconf.get('views_dir');
 
-Templates.compile = function (callback) {
-	callback = callback || function () {};
+var Templates = module.exports;
 
-	compile(callback);
-};
+function processImports(paths, templatePath, source, callback) {
+	var regex = /<!-- IMPORT (.+?) -->/;
 
+	var matches = source.match(regex);
 
-function getBaseTemplates(theme) {
-	var baseTemplatesPaths = [];
-	var baseThemePath;
-	var baseThemeConfig;
-
-	while (theme) {
-		baseThemePath = path.join(nconf.get('themes_path'), theme);
-		baseThemeConfig = require(path.join(baseThemePath, 'theme.json'));
-
-		baseTemplatesPaths.push(path.join(baseThemePath, baseThemeConfig.templates || 'templates'));
-		theme = baseThemeConfig.baseTheme;
+	if (!matches) {
+		return callback(null, source);
 	}
 
-	return baseTemplatesPaths.reverse();
-}
-
-function preparePaths(baseTemplatesPaths, callback) {
-	var coreTemplatesPath = nconf.get('core_templates_path');
-	var viewsPath = nconf.get('views_dir');
-
-	async.waterfall([
-		function (next) {
-			rimraf(viewsPath, next);
-		},
-		function (next) {
-			mkdirp(viewsPath, next);
-		},
-		function (viewsPath, next) {
-			plugins.fireHook('static:templates.precompile', {}, next);
-		},
-		function (next) {
-			plugins.getTemplates(next);
-		},
-	], function (err, pluginTemplates) {
-		if (err) {
-			return callback(err);
-		}
-
-		winston.verbose('[meta/templates] Compiling templates');
-
-		async.parallel({
-			coreTpls: function (next) {
-				utils.walk(coreTemplatesPath, next);
-			},
-			baseThemes: function (next) {
-				async.map(baseTemplatesPaths, function (baseTemplatePath, next) {
-					utils.walk(baseTemplatePath, function (err, paths) {
-						paths = paths.map(function (tpl) {
-							return {
-								base: baseTemplatePath,
-								path: tpl.replace(baseTemplatePath, ''),
-							};
-						});
-
-						next(err, paths);
-					});
-				}, next);
-			},
-		}, function (err, data) {
-			var baseThemes = data.baseThemes;
-			var coreTpls = data.coreTpls;
-			var paths = {};
-
-			coreTpls.forEach(function (el, i) {
-				paths[coreTpls[i].replace(coreTemplatesPath, '')] = coreTpls[i];
-			});
-
-			baseThemes.forEach(function (baseTpls) {
-				baseTpls.forEach(function (el, i) {
-					paths[baseTpls[i].path] = path.join(baseTpls[i].base, baseTpls[i].path);
-				});
-			});
-
-			for (var tpl in pluginTemplates) {
-				if (pluginTemplates.hasOwnProperty(tpl)) {
-					paths[tpl] = pluginTemplates[tpl];
-				}
-			}
-
-			callback(err, paths);
-		});
-	});
-}
-
-function compile(callback) {
-	var themeConfig = require(nconf.get('theme_config'));
-	var baseTemplatesPaths = themeConfig.baseTheme ? getBaseTemplates(themeConfig.baseTheme) : [nconf.get('base_templates_path')];
-	var viewsPath = nconf.get('views_dir');
-
-	function processImports(paths, relativePath, source, callback) {
-		var regex = /<!-- IMPORT (.+?) -->/;
-
-		var matches = source.match(regex);
-
-		if (!matches) {
-			return callback(null, source);
-		}
-
-		var partial = '/' + matches[1];
-		if (paths[partial] && relativePath !== partial) {
-			fs.readFile(paths[partial], function (err, file) {
-				if (err) {
-					return callback(err);
-				}
-
-				var partialSource = file.toString();
-				source = source.replace(regex, partialSource);
-
-				processImports(paths, relativePath, source, callback);
-			});
-		} else {
-			winston.warn('[meta/templates] Partial not loaded: ' + matches[1]);
-			source = source.replace(regex, '');
-
-			processImports(paths, relativePath, source, callback);
-		}
-	}
-
-	preparePaths(baseTemplatesPaths, function (err, paths) {
-		if (err) {
-			return callback(err);
-		}
-
-		async.each(Object.keys(paths), function (relativePath, next) {
-			async.waterfall([
-				function (next) {
-					fs.readFile(paths[relativePath], next);
-				},
-				function (file, next) {
-					var source = file.toString();
-					processImports(paths, relativePath, source, next);
-				},
-				function (compiled, next) {
-					mkdirp(path.join(viewsPath, path.dirname(relativePath)), function (err) {
-						next(err, compiled);
-					});
-				},
-				function (compiled, next) {
-					fs.writeFile(path.join(viewsPath, relativePath), compiled, next);
-				},
-			], next);
-		}, function (err) {
+	var partial = matches[1];
+	if (paths[partial] && templatePath !== partial) {
+		fs.readFile(paths[partial], 'utf8', function (err, partialSource) {
 			if (err) {
-				winston.error('[meta/templates] ' + err.stack);
 				return callback(err);
 			}
 
-			winston.verbose('[meta/templates] Successfully compiled templates.');
-
-			callback();
+			source = source.replace(regex, partialSource);
+			processImports(paths, templatePath, source, callback);
 		});
-	});
+	} else {
+		winston.warn('[meta/templates] Partial not loaded: ' + matches[1]);
+		source = source.replace(regex, '');
+
+		processImports(paths, templatePath, source, callback);
+	}
+}
+Templates.processImports = processImports;
+
+function getTemplateDirs(callback) {
+	var pluginTemplates = _.values(plugins.pluginsData)
+		.filter(function (pluginData) {
+			return !pluginData.id.startsWith('nodebb-theme-');
+		})
+		.map(function (pluginData) {
+			return path.join(__dirname, '../../node_modules/', pluginData.id, pluginData.templates || 'templates');
+		});
+
+	var themeConfig = require(nconf.get('theme_config'));
+	var theme = themeConfig.baseTheme;
+
+	var themePath;
+	var themeTemplates = [nconf.get('theme_templates_path')];
+	while (theme) {
+		themePath = path.join(nconf.get('themes_path'), theme);
+		themeConfig = require(path.join(themePath, 'theme.json'));
+
+		themeTemplates.push(path.join(themePath, themeConfig.templates || 'templates'));
+		theme = themeConfig.baseTheme;
+	}
+
+	themeTemplates.push(nconf.get('base_templates_path'));
+	themeTemplates = _.uniq(themeTemplates.reverse());
+
+	var coreTemplatesPath = nconf.get('core_templates_path');
+
+	var templateDirs = _.uniq([coreTemplatesPath].concat(themeTemplates, pluginTemplates));
+
+	async.filter(templateDirs, file.exists, callback);
 }
 
-module.exports = Templates;
+function getTemplateFiles(dirs, callback) {
+	async.waterfall([
+		function (cb) {
+			async.map(dirs, function (dir, next) {
+				file.walk(dir, function (err, files) {
+					if (err) { return next(err); }
+
+					files = files.filter(function (path) {
+						return path.endsWith('.tpl');
+					}).map(function (file) {
+						return {
+							name: path.relative(dir, file).replace(/\\/g, '/'),
+							path: file,
+						};
+					});
+					next(null, files);
+				});
+			}, cb);
+		},
+		function (buckets, cb) {
+			var dict = {};
+			buckets.forEach(function (files) {
+				files.forEach(function (file) {
+					dict[file.name] = file.path;
+				});
+			});
+
+			cb(null, dict);
+		},
+	], callback);
+}
+
+function compile(callback) {
+	callback = callback || function () {};
+
+	async.waterfall([
+		function (next) {
+			rimraf(viewsPath, function (err) { next(err); });
+		},
+		function (next) {
+			mkdirp(viewsPath, function (err) { next(err); });
+		},
+		getTemplateDirs,
+		getTemplateFiles,
+		function (files, next) {
+			async.each(Object.keys(files), function (name, next) {
+				var filePath = files[name];
+
+				async.waterfall([
+					function (next) {
+						fs.readFile(filePath, 'utf8', next);
+					},
+					function (source, next) {
+						processImports(files, name, source, next);
+					},
+					function (source, next) {
+						mkdirp(path.join(viewsPath, path.dirname(name)), function (err) {
+							next(err, source);
+						});
+					},
+					function (compiled, next) {
+						fs.writeFile(path.join(viewsPath, name), compiled, next);
+					},
+				], next);
+			}, next);
+		},
+		function (next) {
+			winston.verbose('[meta/templates] Successfully compiled templates.');
+			next();
+		},
+	], callback);
+}
+Templates.compile = compile;

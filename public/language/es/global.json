@@ -53,6 +53,7 @@
     "topics": "Temas",
     "posts": "Mensajes",
     "best": "Mejor valorados",
+    "votes": "Votes",
     "upvoters": "Positivos",
     "upvoted": "Votado positivamente",
     "downvoters": "Negativos",
@@ -103,5 +104,8 @@
     "cookies.message": "Esta web usa cookies para asegurar que usted recibe la mejor experiencia de navegación.",
     "cookies.accept": "De Acuerdo!",
     "cookies.learn_more": "Quiero saber más",
-    "edited": "Editado"
+    "edited": "Editado",
+    "disabled": "Desahabilitado",
+    "select": "Seleccionar",
+    "user-search-prompt": "Type something here to find users..."
 }

@@ -1,54 +1,63 @@
 'use strict';
 
-(function (Auth) {
-	var passport = require('passport');
-	var	passportLocal = require('passport-local').Strategy;
-	var	nconf = require('nconf');
-	var	winston = require('winston');
-	var	express = require('express');
+var async = require('async');
+var passport = require('passport');
+var passportLocal = require('passport-local').Strategy;
+var nconf = require('nconf');
+var winston = require('winston');
+var express = require('express');
 
-	var	controllers = require('../controllers');
-	var	plugins = require('../plugins');
-	var	hotswap = require('../hotswap');
+var controllers = require('../controllers');
+var plugins = require('../plugins');
+var hotswap = require('../hotswap');
 
-	var	loginStrategies = [];
+var loginStrategies = [];
 
-	Auth.initialize = function (app, middleware) {
-		app.use(passport.initialize());
-		app.use(passport.session());
+var Auth = module.exports;
 
-		app.use(function (req, res, next) {
-			req.uid = req.user ? parseInt(req.user.uid, 10) : 0;
-			next();
-		});
+Auth.initialize = function (app, middleware) {
+	app.use(passport.initialize());
+	app.use(passport.session());
 
-		Auth.app = app;
-		Auth.middleware = middleware;
-	};
-
-	Auth.getLoginStrategies = function () {
-		return loginStrategies;
-	};
-
-	Auth.reloadRoutes = function (callback) {
-		var router = express.Router();
-		router.hotswapId = 'auth';
-
-		loginStrategies.length = 0;
-
-		if (plugins.hasListeners('action:auth.overrideLogin')) {
-			winston.warn('[authentication] Login override detected, skipping local login strategy.');
-			plugins.fireHook('action:auth.overrideLogin');
+	app.use(function (req, res, next) {
+		var isSpider = req.isSpider();
+		req.loggedIn = !isSpider && !!req.user;
+		if (isSpider) {
+			req.uid = -1;
+		} else if (req.user) {
+			req.uid = parseInt(req.user.uid, 10);
 		} else {
-			passport.use(new passportLocal({ passReqToCallback: true }, controllers.authentication.localLogin));
+			req.uid = 0;
 		}
+		next();
+	});
 
-		plugins.fireHook('filter:auth.init', loginStrategies, function (err) {
-			if (err) {
-				winston.error('filter:auth.init - plugin failure');
-				return callback(err);
-			}
+	Auth.app = app;
+	Auth.middleware = middleware;
+};
 
+Auth.getLoginStrategies = function () {
+	return loginStrategies;
+};
+
+Auth.reloadRoutes = function (callback) {
+	var router = express.Router();
+	router.hotswapId = 'auth';
+
+	loginStrategies.length = 0;
+
+	if (plugins.hasListeners('action:auth.overrideLogin')) {
+		winston.warn('[authentication] Login override detected, skipping local login strategy.');
+		plugins.fireHook('action:auth.overrideLogin');
+	} else {
+		passport.use(new passportLocal({ passReqToCallback: true }, controllers.authentication.localLogin));
+	}
+
+	async.waterfall([
+		function (next) {
+			plugins.fireHook('filter:auth.init', loginStrategies, next);
+		},
+		function (loginStrategies, next) {
 			loginStrategies.forEach(function (strategy) {
 				if (strategy.url) {
 					router.get(strategy.url, passport.authenticate(strategy.name, {
@@ -70,19 +79,17 @@
 			router.post('/logout', Auth.middleware.applyCSRF, controllers.authentication.logout);
 
 			hotswap.replace('auth', router);
-			if (typeof callback === 'function') {
-				callback();
-			}
-		});
-	};
+			next();
+		},
+	], callback);
+};
 
-	passport.serializeUser(function (user, done) {
-		done(null, user.uid);
-	});
+passport.serializeUser(function (user, done) {
+	done(null, user.uid);
+});
 
-	passport.deserializeUser(function (uid, done) {
-		done(null, {
-			uid: uid,
-		});
+passport.deserializeUser(function (uid, done) {
+	done(null, {
+		uid: uid,
 	});
-}(exports));
+});

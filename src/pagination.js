@@ -1,8 +1,9 @@
 'use strict';
 
 var qs = require('querystring');
+var _ = require('lodash');
 
-var pagination = {};
+var pagination = module.exports;
 
 pagination.create = function (currentPage, pageCount, queryObj) {
 	if (pageCount <= 1) {
@@ -37,7 +38,7 @@ pagination.create = function (currentPage, pageCount, queryObj) {
 		return a - b;
 	});
 
-	queryObj = queryObj || {};
+	queryObj = _.clone(queryObj || {});
 
 	delete queryObj._;
 
@@ -75,6 +76,3 @@ pagination.create = function (currentPage, pageCount, queryObj) {
 	}
 	return data;
 };
-
-
-module.exports = pagination;

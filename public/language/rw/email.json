@@ -30,7 +30,12 @@
     "notif.chat.unsub.info": "Iri tangazo rijyanye n'ubutumwa bwo mu gikari waryohererejwe kubera ko wabihisemo mu byo uzajya umenyeshwa",
     "notif.post.cta": "Kanda hano kugirango usome inkuru yose",
     "notif.post.unsub.info": "Iri tangazo rijyanye n'ibyashyizwe ku rubuga waryohererejwe kubera ko wabihisemo mu byo uzajya umenyeshwa",
+    "notif.cta": "Click here to go to forum",
     "test.text1": "Iyi message ni igerageza kugirango harebwe niba emailer ya NodeBB yarateguwe neza",
     "unsub.cta": "Kanda hano kugirango uhindure uko bizajya bigenda",
+    "banned.subject": "You have been banned from %1",
+    "banned.text1": "The user %1 has been banned from %2.",
+    "banned.text2": "This ban will last until %1.",
+    "banned.text3": "This is the reason why you have been banned:",
     "closing": "Murakoze!"
 }

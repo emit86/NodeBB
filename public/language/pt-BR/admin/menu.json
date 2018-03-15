@@ -9,11 +9,15 @@
 
 	"section-manage": "Administrar",
 	"manage/categories": "Categorias",
+	"manage/privileges": "Privileges",
 	"manage/tags": "Tags",
 	"manage/users": "Usuários",
+	"manage/admins-mods": "Admins & Mods",
 	"manage/registration": "Fila de Registro",
+	"manage/post-queue": "Fileira da Posts",
 	"manage/groups": "Grupos",
 	"manage/ip-blacklist": "Lista Negra de IPs",
+	"manage/uploads": "Uploads",
 
 	"section-settings": "Configurações",
 	"settings/general": "Geral",
@@ -38,7 +42,7 @@
 	"section-appearance": "Aparência",
 	"appearance/themes": "Temas",
 	"appearance/skins": "Skins",
-	"appearance/customise": "HTML & CSS Personalizados",
+	"appearance/customise": "Custom Content (HTML/JS/CSS)",
 
 	"section-extend": "Extenda",
 	"extend/plugins": "Plugins",
@@ -64,7 +68,7 @@
 	"logout": "Sair da Conta",
 	"view-forum": "Ver Fórum",
 
-	"search.placeholder": "Pesquisar...",
+	"search.placeholder": "Search for settings",
 	"search.no-results": "Sem resultados...",
 	"search.search-forum": "Pesquisar o fórum por <strong></strong>",
 	"search.keep-typing": "Digite para ver mais resultados...",

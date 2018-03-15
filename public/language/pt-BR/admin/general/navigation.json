@@ -11,10 +11,8 @@
 	"only-admins": "Mostrar apenas para Administradores",
 	"only-global-mods-and-admins": "Exibir apenas para Moderadores Globais e Administradores",
 	"only-logged-in": "Mostrar apenas para usuários logados",
+	"only-guest": "Mostrar apenas para visitantes",
 	"open-new-window": "Abrir em uma nova janela",
-
-	"installed-plugins-required": "Plugins Instalados Necessários:",
-	"search-plugin": "Plugin de pesquisa",
 
 	"btn.delete": "Deletar",
 	"btn.disable": "Desligar",

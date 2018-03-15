@@ -10,6 +10,7 @@
 	"custom-class": "Свой класс",
 	"num-recent-replies": "# of Recent Replies",
 	"ext-link": "Внешняя ссылка",
+	"is-section": "Treat this category as a section",
 	"upload-image": "Загрузить изображение",
 	"delete-image": "Удалить",
 	"category-image": "Изображение категории",
@@ -64,5 +65,7 @@
 	"alert.find-user": "Find a User",
 	"alert.user-search": "Search for a user here...",
 	"alert.find-group": "Find a Group",
-	"alert.group-search": "Search for a group here..."
+	"alert.group-search": "Search for a group here...",
+	"collapse-all": "Collapse All",
+	"expand-all": "Expand All"
 }

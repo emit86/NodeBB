@@ -1,9 +1,11 @@
 {
-	"pagination": "Seitennummerierungseinstellungen",
-	"enable": "Themen in Seiten einteilen anstatt unendlich weit zu scrollen",
+	"pagination": "Seitennummerierungs Einstellungen",
+	"enable": "Themen in Seiten einteilen anstatt endlos zu scrollen",
 	"topics": "Themen Seitennummerierung",
 	"posts-per-page": "Beiträge pro Seite",
+	"max-posts-per-page": "Maximale Anzahl von Beiträgen pro Seite",
 	"categories": "Kategorie Seitennummerierung",
 	"topics-per-page": "Themen pro Seite",
-	"initial-num-load": "Ursprüngliche anzahl an Themen, die bei Ungelesen, Aktuell und beliebt geladen werden sollen"
+	"max-topics-per-page": "Maximale Anzahl von Themen pro Seite",
+	"initial-num-load": "Ursprüngliche Anzahl an Themen, die bei ungelesen, aktuell und beliebt geladen werden sollen"
 }

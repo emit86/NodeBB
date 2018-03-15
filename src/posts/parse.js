@@ -4,16 +4,24 @@ var async = require('async');
 var nconf = require('nconf');
 var url = require('url');
 var winston = require('winston');
-var S = require('string');
 
 var meta = require('../meta');
 var cache = require('./cache');
 var plugins = require('../plugins');
-var translator = require('../../public/src/modules/translator');
-
-var urlRegex = /href="([^"]+)"/g;
+var translator = require('../translator');
+var utils = require('../utils');
 
 module.exports = function (Posts) {
+	Posts.urlRegex = {
+		regex: /href="([^"]+)"/g,
+		length: 6,
+	};
+
+	Posts.imgRegex = {
+		regex: /src="([^"]+)"/g,
+		length: 5,
+	};
+
 	Posts.parsePost = function (postData, callback) {
 		postData.content = String(postData.content || '');
 
@@ -42,10 +50,10 @@ module.exports = function (Posts) {
 		plugins.fireHook('filter:parse.signature', { userData: userData, uid: uid }, callback);
 	};
 
-	Posts.relativeToAbsolute = function (content) {
+	Posts.relativeToAbsolute = function (content, regex) {
 		// Turns relative links in post body to absolute urls
 		var parsed;
-		var current = urlRegex.exec(content);
+		var current = regex.regex.exec(content);
 		var absolute;
 		while (current !== null) {
 			if (current[1]) {
@@ -54,26 +62,26 @@ module.exports = function (Posts) {
 					if (!parsed.protocol) {
 						if (current[1].startsWith('/')) {
 							// Internal link
-							absolute = nconf.get('url') + current[1];
+							absolute = nconf.get('base_url') + current[1];
 						} else {
 							// External link
 							absolute = '//' + current[1];
 						}
 
-						content = content.slice(0, current.index + 6) + absolute + content.slice(current.index + 6 + current[1].length);
+						content = content.slice(0, current.index + regex.length) + absolute + content.slice(current.index + regex.length + current[1].length);
 					}
 				} catch (err) {
 					winston.verbose(err.messsage);
 				}
 			}
-			current = urlRegex.exec(content);
+			current = regex.regex.exec(content);
 		}
 
 		return content;
 	};
 
 	function sanitizeSignature(signature) {
-		var string = S(signature);
+		signature = translator.escape(signature);
 		var tagsToStrip = [];
 
 		if (parseInt(meta.config['signatures:disableLinks'], 10) === 1) {
@@ -84,6 +92,6 @@ module.exports = function (Posts) {
 			tagsToStrip.push('img');
 		}
 
-		return tagsToStrip.length ? string.stripTags.apply(string, tagsToStrip).s : signature;
+		return utils.stripHTMLTags(signature, tagsToStrip);
 	}
 };

@@ -14,8 +14,12 @@ helpers.postCommand = function (socket, command, eventName, notification, data, 
 		return callback(new Error('[[error:not-logged-in]]'));
 	}
 
-	if (!data || !data.pid || !data.room_id) {
+	if (!data || !data.pid) {
 		return callback(new Error('[[error:invalid-data]]'));
+	}
+
+	if (!data.room_id) {
+		return callback(new Error('[[error:invalid-room-id, ' + data.room_id + ' ]]'));
 	}
 
 	async.waterfall([
@@ -65,7 +69,9 @@ function executeCommand(socket, command, eventName, notification, data, callback
 				websockets.in(data.room_id).emit('event:' + eventName, result);
 			}
 
-			if (result && notification) {
+			if (result && command === 'upvote') {
+				socketHelpers.upvote(result, notification);
+			} else if (result && notification) {
 				socketHelpers.sendNotificationToPostOwner(data.pid, socket.uid, command, notification);
 			} else if (result && command === 'unvote') {
 				socketHelpers.rescindUpvoteNotification(data.pid, socket.uid);

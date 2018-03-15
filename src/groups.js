@@ -6,7 +6,7 @@ var validator = require('validator');
 var user = require('./user');
 var db = require('./database');
 var plugins = require('./plugins');
-var utils = require('../public/src/utils');
+var utils = require('./utils');
 
 var Groups = module.exports;
 
@@ -22,7 +22,7 @@ require('./groups/posts')(Groups);
 require('./groups/user')(Groups);
 
 
-Groups.ephemeralGroups = ['guests'];
+Groups.ephemeralGroups = ['guests', 'spiders'];
 
 Groups.getEphemeralGroup = function (groupName) {
 	return {
@@ -121,10 +121,10 @@ Groups.get = function (groupName, options, callback) {
 					Groups.getOwnersAndMembers(groupName, options.uid, 0, stop, next);
 				},
 				pending: function (next) {
-					Groups.getUsersFromSet('group:' + groupName + ':pending', next);
+					Groups.getUsersFromSet('group:' + groupName + ':pending', ['username', 'userslug', 'picture'], next);
 				},
 				invited: function (next) {
-					Groups.getUsersFromSet('group:' + groupName + ':invited', next);
+					Groups.getUsersFromSet('group:' + groupName + ':invited', ['username', 'userslug', 'picture'], next);
 				},
 				isMember: async.apply(Groups.isMember, options.uid, groupName),
 				isPending: async.apply(Groups.isPending, options.uid, groupName),
@@ -135,7 +135,7 @@ Groups.get = function (groupName, options, callback) {
 		function (_results, next) {
 			results = _results;
 			if (!results.base) {
-				return callback(new Error('[[error:no-group]]'));
+				return callback(null, null);
 			}
 			plugins.fireHook('filter:parse.raw', results.base.description, next);
 		},
@@ -144,7 +144,7 @@ Groups.get = function (groupName, options, callback) {
 			Groups.escapeGroupData(groupData);
 
 			groupData.descriptionParsed = descriptionParsed;
-			groupData.userTitleEnabled = groupData.userTitleEnabled ? !!parseInt(groupData.userTitleEnabled, 10) : true;
+			groupData.userTitleEnabled = groupData.userTitleEnabled ? parseInt(groupData.userTitleEnabled, 10) === 1 : true;
 			groupData.createtimeISO = utils.toISOString(groupData.createtime);
 			groupData.members = results.members;
 			groupData.membersNextStart = stop + 1;

@@ -53,6 +53,7 @@
     "topics": "Số Chủ đề",
     "posts": "Số bài viết",
     "best": "Hay nhất",
+    "votes": "Votes",
     "upvoters": "Tán thành",
     "upvoted": "Tán thành",
     "downvoters": "Phản đối",
@@ -103,5 +104,8 @@
     "cookies.message": "Trang web này sử dụng cookie để đảm bảo trải nghiệm tốt nhất cho người dùng",
     "cookies.accept": "Đã rõ!",
     "cookies.learn_more": "Xem thêm",
-    "edited": "Đã cập nhật"
+    "edited": "Đã cập nhật",
+    "disabled": "Bị khóa",
+    "select": "Chọn",
+    "user-search-prompt": "Type something here to find users..."
 }

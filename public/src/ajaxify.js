@@ -10,13 +10,15 @@ $(document).ready(function () {
 	var ajaxifyTimer;
 
 	var translator;
+	var Benchpress;
 	var retry = true;
 	var previousBodyClass = '';
 
 	// Dumb hack to fool ajaxify into thinking translator is still a global
 	// When ajaxify is migrated to a require.js module, then this can be merged into the "define" call
-	require(['translator'], function (_translator) {
+	require(['translator', 'benchpress'], function (_translator, _Benchpress) {
 		translator = _translator;
+		Benchpress = _Benchpress;
 	});
 
 	$(window).on('popstate', function (ev) {
@@ -35,6 +37,7 @@ $(document).ready(function () {
 		}
 	});
 
+	ajaxify.count = 0;
 	ajaxify.currentPage = null;
 
 	ajaxify.go = function (url, callback, quiet) {
@@ -98,11 +101,15 @@ $(document).ready(function () {
 		return true;
 	};
 
+	ajaxify.isCold = function () {
+		return ajaxify.count <= 1;
+	};
+
 	ajaxify.handleRedirects = function (url) {
 		url = ajaxify.removeRelativePath(url.replace(/^\/|\/$/g, '')).toLowerCase();
 		var isClientToAdmin = url.startsWith('admin') && window.location.pathname.indexOf(RELATIVE_PATH + '/admin') !== 0;
 		var isAdminToClient = !url.startsWith('admin') && window.location.pathname.indexOf(RELATIVE_PATH + '/admin') === 0;
-		var uploadsOrApi = url.startsWith('assets/uploads') || url.startsWith('uploads') || url.startsWith('api');
+		var uploadsOrApi = url.startsWith('assets/') || url.startsWith('uploads') || url.startsWith('api');
 
 		if (isClientToAdmin || isAdminToClient || uploadsOrApi) {
 			window.open(RELATIVE_PATH + '/' + url, '_top');
@@ -110,7 +117,6 @@ $(document).ready(function () {
 		}
 		return false;
 	};
-
 
 	ajaxify.start = function (url) {
 		url = ajaxify.removeRelativePath(url.replace(/^\/|\/$/g, ''));
@@ -120,6 +126,8 @@ $(document).ready(function () {
 		};
 
 		$(window).trigger('action:ajaxify.start', payload);
+
+		ajaxify.count += 1;
 
 		return payload.url;
 	};
@@ -174,7 +182,7 @@ $(document).ready(function () {
 	function renderTemplate(url, tpl_url, data, callback) {
 		$(window).trigger('action:ajaxify.loadingTemplates', {});
 
-		templates.parse(tpl_url, data, function (template) {
+		Benchpress.parse(tpl_url, data, function (template) {
 			translator.translate(template, function (translatedTemplate) {
 				translatedTemplate = translator.unescape(translatedTemplate);
 				$('body').removeClass(previousBodyClass).addClass(data.bodyClass);
@@ -195,7 +203,6 @@ $(document).ready(function () {
 
 	ajaxify.end = function (url, tpl_url) {
 		var count = 2;
-
 		function done() {
 			count -= 1;
 			if (count === 0) {
@@ -203,17 +210,11 @@ $(document).ready(function () {
 			}
 		}
 		ajaxify.loadScript(tpl_url, done);
-
-		ajaxify.widgets.render(tpl_url, url, done);
+		ajaxify.widgets.render(tpl_url, done);
 
 		$(window).trigger('action:ajaxify.contentLoaded', { url: url, tpl: tpl_url });
 
 		app.processPage();
-
-		var timeElapsed = Date.now() - ajaxifyTimer;
-		if (config.environment === 'development' && !isNaN(timeElapsed)) {
-			console.info('[ajaxify /' + url + '] Time elapsed:', timeElapsed + 'ms');
-		}
 	};
 
 	ajaxify.parseData = function () {
@@ -293,9 +294,19 @@ $(document).ready(function () {
 			headers: {
 				'X-Return-To': app.previousUrl,
 			},
-			success: function (data) {
+			success: function (data, textStatus, xhr) {
 				if (!data) {
 					return;
+				}
+
+				if (xhr.getResponseHeader('X-Redirect')) {
+					return callback({
+						data: {
+							status: 302,
+							responseJSON: data,
+						},
+						textStatus: 'error',
+					});
 				}
 
 				ajaxify.data = data;
@@ -318,20 +329,10 @@ $(document).ready(function () {
 	};
 
 	ajaxify.loadTemplate = function (template, callback) {
-		if (templates.cache[template]) {
-			callback(templates.cache[template]);
-		} else {
-			$.ajax({
-				url: config.relative_path + '/assets/templates/' + template + '.tpl?' + config['cache-buster'],
-				type: 'GET',
-				success: function (data) {
-					callback(data.toString());
-				},
-				error: function (error) {
-					throw new Error('Unable to load template: ' + template + ' (' + error.statusText + ')');
-				},
-			});
-		}
+		require([config.relative_path + '/assets/templates/' + template + '.js'], callback, function (err) {
+			console.error('Unable to load template: ' + template);
+			throw err;
+		});
 	};
 
 	function ajaxifyAnchors() {
@@ -366,10 +367,9 @@ $(document).ready(function () {
 							window.open(this.href, '_blank');
 							e.preventDefault();
 						} else if (config.useOutgoingLinksPage) {
-							var safeUrls = config.outgoingLinksWhitelist.trim().split(/[\s,]+/g);
+							var safeUrls = config.outgoingLinksWhitelist.trim().split(/[\s,]+/g).filter(Boolean);
 							var href = this.href;
-
-							if (!safeUrls.some(function (url) { return href.indexOf(url) !== -1; })) {
+							if (!safeUrls.length || !safeUrls.some(function (url) { return href.indexOf(url) !== -1; })) {
 								ajaxify.go('outgoing?url=' + encodeURIComponent(href));
 								e.preventDefault();
 							}
@@ -395,6 +395,10 @@ $(document).ready(function () {
 			}
 
 			if (app.flags && app.flags.hasOwnProperty('_unsaved') && app.flags._unsaved === true) {
+				if (e.ctrlKey) {
+					return;
+				}
+
 				translator.translate('[[global:unsaved-changes]]', function (text) {
 					bootbox.confirm(text, function (navigate) {
 						if (navigate) {
@@ -410,7 +414,9 @@ $(document).ready(function () {
 		});
 	}
 
-	templates.registerLoader(ajaxify.loadTemplate);
+	require(['benchpress'], function (Benchpress) {
+		Benchpress.registerLoader(ajaxify.loadTemplate);
+	});
 
 	if (window.history && window.history.pushState) {
 		// Progressive Enhancement, ajaxify available only to modern browsers
@@ -418,9 +424,4 @@ $(document).ready(function () {
 	}
 
 	app.load();
-
-	$('[type="text/tpl"][data-template]').each(function () {
-		templates.cache[$(this).attr('data-template')] = $('<div/>').html($(this).html()).text();
-		$(this).parent().remove();
-	});
 });
